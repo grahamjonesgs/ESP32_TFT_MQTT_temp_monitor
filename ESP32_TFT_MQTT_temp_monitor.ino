@@ -26,6 +26,7 @@
 #include <TimeLib.h>
 #include <ArduinoJson.h>
 #include "network_config.h"
+#include "weathericons.h"
 
 #define CHAR_LEN 255
 
@@ -272,6 +273,13 @@ void mqtt_connect() {
   delay(1000);
 }
 
+void tft_draw_string_centre(const char* message, int leftx, int rightx, int y, int font) {
+
+  tft.drawString(message, leftx + (rightx - leftx - tft.textWidth(message, font)) / 2 , y , font);
+
+}
+
+
 void tft_output_t(void * pvParameters ) {
   String weatherDescriptionFirstLetter;
   String weatherDescriptionTemp;
@@ -286,9 +294,8 @@ void tft_output_t(void * pvParameters ) {
   // Set up the tittle message box
   tft.fillRect(0, 0, 240, 20, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_RED);
-  tft.drawString(" The Klauss-o-meter V1.0", 40 , 3, 2);
-
-
+  tft_draw_string_centre(" The Klauss-o-meter V1.0", 0, 240, 3, 2);
+ 
   // Set up the room message box
   //tft.drawRect(20, 25, 200, 140, TFT_BLUE);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -317,7 +324,7 @@ void tft_output_t(void * pvParameters ) {
       statusMessageUpdated = false;
       tft.fillRect(0, 296, 240, 24, TFT_CYAN);
       tft.setTextColor(TFT_BLACK, TFT_CYAN);
-      tft.drawString(statusMessage, 30 , 300, 2);
+      tft_draw_string_centre(statusMessage, 0, 240, 300, 2);
       statusMessageDisplayed = true;
       statusChangeTime = now();
     }
@@ -327,17 +334,20 @@ void tft_output_t(void * pvParameters ) {
       temperatureUpdated = false;
       tft.fillRect(21, 25, 198, 138, TFT_BLACK);
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
-      tft.drawString(readings[0].description, 30 , 30, 2);
-      tft.drawString(readings[0].output, 30 , 50, 6);
 
-      tft.drawString(readings[1].description, 120 , 30, 2);
-      tft.drawString(readings[1].output, 120 , 50, 6);
 
-      tft.drawString(readings[2].description, 30 , 90, 2);
-      tft.drawString(readings[2].output, 30 , 110, 6);
+      // The zones for the rooms are x 21 to 219 width of 198. Give centre boarder of 10 points gives
+      // First zone 21 to 115, second 125 to 219, width of 94.
 
-      tft.drawString(readings[3].description, 120 , 90, 2);
-      tft.drawString(readings[3].output, 120 , 110, 6);
+      tft_draw_string_centre(readings[0].description, 21, 115, 30, 2);
+      tft_draw_string_centre(readings[0].output, 21, 115, 50, 6);
+      tft_draw_string_centre(readings[1].description, 125, 219, 30, 2);
+      tft_draw_string_centre(readings[1].output, 125, 219, 50, 6);
+      tft_draw_string_centre(readings[2].description, 21, 115, 90, 2);
+      tft_draw_string_centre(readings[2].output, 21, 115, 110, 6);
+      tft_draw_string_centre(readings[3].description, 125, 219, 90, 2);
+      tft_draw_string_centre(readings[3].output, 125, 219, 110, 6);
+
     }
     if (weatherUpdated) {
       weatherUpdated = false;
@@ -350,7 +360,9 @@ void tft_output_t(void * pvParameters ) {
       weatherDescriptionFirstLetter.toUpperCase();
       weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
       tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
-
+      //tft.setSwapBytes(true);
+      //tft.pushImage(100, 100, 99, 100, chancesnow);
+       //tft.drawBitmap(100,100,icon_09d,99,100,TFT_BLUE);
     }
   }
 }
