@@ -397,7 +397,7 @@ void lcd_output_t(void * pvParameters ) {
 
 tft.drawRect(20, 20, 200, 140, TFT_BLUE);
 tft.drawRect(21, 21, 199, 138, TFT_BLUE);
-tft.drawString("Rooms", 30 ,13, 2);
+tft.drawString(" Rooms ", 30 ,13, 2);
 
   while (true) {
     delay(100);
