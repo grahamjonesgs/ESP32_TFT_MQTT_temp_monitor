@@ -50,7 +50,7 @@ struct Settings {                     // Structure to hold the cincomming settin
   int dataType;                       // Type of data received
 };
 
-struct LcdValues {
+struct TftValues {
   bool on;
 };
 
@@ -63,20 +63,13 @@ struct Weather {
   time_t updateTime;
 };
 
-struct LcdOutput {
-  char line1[CHAR_LEN];
-  char line2[CHAR_LEN];
-  int outputType;
-  bool updated;
-};
-
-// Array and LCD string settings
+// Array and TFT string settings
 #define NO_READING "--"            // Screen output before any mesurement is received
 #define DESC_ONOFF "ONO"
 #define OUTPUT_TEMPERATURE 1
 #define OUTPUT_WEATHER 2
 
-// LCD Character settings
+// Character settings
 #define CHAR_UP 1
 #define CHAR_DOWN 2
 #define CHAR_SAME 3
@@ -85,8 +78,6 @@ struct LcdOutput {
 #define CHAR_NO_MESSAGE 33
 #define CHAR_NOT_ENOUGH_DATA 46
 #define CHAR_ENOUGH_DATA CHAR_BLANK
-#define LCD_COL 16
-#define LCD_ROW 2
 
 // Data type definition for array
 #define DATA_TEMPERATURE 0
@@ -98,15 +89,20 @@ struct LcdOutput {
 #define MAX_NO_MESSAGE_SEC 3600LL        // Time before CHAR_NO_MESSAGE is set in seconds (long) 
 #define TIME_RETRIES 100                 // Number of time to retry getting the time during setup
 #define TIME_OFFSET 7200                 // Local time offset from UTC
-#define WEATHER_UPDATE_INTERVAL 60       // Interval between weather updates
+#define WEATHER_UPDATE_INTERVAL 300      // Interval between weather updates
+#define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
-LcdValues lcdValues;
 Weather weather = {0.0, 0, 0.0, "", "", 0};
-LcdOutput lcdOutput = {{CHAR_BLANK}, {CHAR_BLANK}, true};
-bool touch_light = false;
+char statusMessage[CHAR_LEN];
+bool statusMessageUpdated = false;
+bool temperatureUpdated = true;
+bool weatherUpdated = false;
+
+TftValues tftValues;
+
 WiFiClientSecure wifiClient;
 WiFiClient wifiClientWeather;
 MqttClient mqttClient(wifiClient);
@@ -129,81 +125,23 @@ size_t old_biggest_free_block = 0;
 void setup() {
 
   Serial.begin(115200);  // Default speed of esp32
-  //EEPROM.get(LCD_VALUES_ADDRESS, lcdValues);
-  xTaskCreatePinnedToCore( lcd_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
+  xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   delay(3000);
   welcome_message();
   network_connect();
   time_init();
   mqtt_connect();
-  lcd_update_temp;
 
   xTaskCreatePinnedToCore( get_weather_t, "Get Weather", 8192 , NULL, 3, NULL, 0 );
-  xTaskCreatePinnedToCore( touch_check_t, "Touch", 8192 , NULL, 4, NULL, 0 );
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
 }
 
 void welcome_message() {
 
-  strncpy(lcdOutput.line1, "Welcome to the", LCD_COL);
-  strncpy(lcdOutput.line2, "Klauss-o-meter", LCD_COL);
+  strncpy(statusMessage, "Welcome to the Klauss-o-meter", CHAR_LEN);
+  statusMessageUpdated = true;
 
-  delay(3000);
-}
-
-void touch_check_t(void * pvParameters) {
-  long touch_total;
-  int touch_loop_max;
-  float touch_average;
-  int touch_sensor_value = 0;
-  int loops_touched = 0;
-  int touch_array[TOUCH_ARRAY_SIZE];
-  int touch_counter = 0;
-  bool touch_looped = false;
-  long touch_light_pressed = 0;
-
-  while (true) {
-
-    delay(1000);
-    touch_sensor_value = touchRead(T0);
-    touch_array[touch_counter] = touch_sensor_value;
-    touch_counter++;
-
-    if (touch_counter > TOUCH_ARRAY_SIZE - 1) {
-      touch_counter = 0;
-      touch_looped = true;
-    }
-    if (touch_looped) {
-      touch_loop_max = TOUCH_ARRAY_SIZE;
-    }
-    else
-    {
-      touch_loop_max = touch_counter;
-    }
-    touch_total = 0;
-    for (int i = 0; i < touch_loop_max; i++) {
-      touch_total = touch_total + touch_array[i];
-    }
-    touch_average = (float)touch_total / (float)touch_loop_max;
-
-    if (touch_sensor_value < touch_average - SENSITIVITY ) {
-      loops_touched++;
-    }
-    else
-    {
-      loops_touched = 0;
-    }
-    if (loops_touched >= TOUCH_LOOPS_NEEDED ) {
-      touch_light_pressed = now();
-      touch_light = true;
-    }
-    else
-    {
-      if (touch_light_pressed + TOUCH_LIGHT_DELAY < now()) {
-        touch_light = false;
-      }
-    }
-  }
+  delay(1000);
 }
 
 void get_weather_t(void * pvParameters ) {
@@ -249,7 +187,11 @@ void get_weather_t(void * pvParameters ) {
         strncpy(weather.overal, weatherOveral, CHAR_LEN);
         weather.updateTime = now();
         Serial.println("Weather Updated");
+        weatherUpdated = true;
+        strncpy(statusMessage, "Weather updated", CHAR_LEN);
+        statusMessageUpdated = true;
       }
+
       wifiClientWeather.flush();
       wifiClientWeather.stop();
     }
@@ -259,26 +201,20 @@ void get_weather_t(void * pvParameters ) {
 
 void network_connect() {
 
-  const char lcdWait[8][6] = {".    ", " .   ", "  .  ", "   . ", "    .", "   . ", "  .  ", " .   "};
-  int lcdWaitCount = 0;
-
   Serial.print("Connect to WPA SSID: ");
   Serial.println(WIFI_SSID);
-  strncpy(lcdOutput.line1, "Waiting for", LCD_COL);
-  strncpy(lcdOutput.line2, WIFI_SSID, LCD_COL);
+  strncpy(statusMessage, "Waiting for ", CHAR_LEN);
+  strncat(statusMessage, WIFI_SSID, CHAR_LEN);
+  statusMessageUpdated = true;
 
   while (WiFi.begin(WIFI_SSID, WIFI_PASSWORD) != WL_CONNECTED) {
     Serial.print(".");
-    strncpy(lcdOutput.line1, "Waiting for", LCD_COL);
-    strncat(lcdOutput.line1, lcdWait[lcdWaitCount], 5);
 
-    lcdWaitCount++;
-    if (lcdWaitCount > (sizeof(lcdWait) / sizeof(lcdWait[0])) - 1) {
-      lcdWaitCount = 0;
-    }
     delay(500);
   }
-  strncpy(lcdOutput.line1, "Connected to:   ", LCD_COL);
+  strncpy(statusMessage, "Connected to: ", CHAR_LEN);
+  strncat(statusMessage, WIFI_SSID, CHAR_LEN);
+  statusMessageUpdated = true;
 }
 
 void time_init() {
@@ -307,12 +243,15 @@ void mqtt_connect() {
   Serial.print("Attempting to connect to the MQTT broker: ");
   Serial.println(MQTT_SERVER);
 
-  strncpy(lcdOutput.line1, "Connecting to: ", LCD_COL);
-  strncpy(lcdOutput.line2, MQTT_SERVER, LCD_COL);
+  strncpy(statusMessage, "Connecting to: ", CHAR_LEN);
+  strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
+  statusMessageUpdated = true;
 
   while (!mqttClient.connect(MQTT_SERVER, MQTT_PORT)) {
     Serial.print("MQTT connection failed");
-    strncpy(lcdOutput.line2, "Can't connect:", LCD_COL);
+    strncpy(statusMessage, "Can't connect to: ", CHAR_LEN);
+    strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
+    statusMessageUpdated = true;
     delay(5000);
     ESP.restart();
   }
@@ -326,109 +265,94 @@ void mqtt_connect() {
   for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
     mqttClient.subscribe(settings[i].topic);
   }
-  //strncpy(lcdOutput.line1, "Connected to:  ", LCD_COL);
-  delay(1000);  // For the message on the LCD to be read
+  strncpy(statusMessage, "Connected to: ", CHAR_LEN);
+  strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
+  statusMessageUpdated = true;
+
+  delay(1000);
 }
 
-
-void lcd_update_temp() {
-
-  strncpy(lcdOutput.line1, readings[0].description , LCD_COL);
-  strncat(lcdOutput.line1, ":" , LCD_COL);
-  strncat(lcdOutput.line1, readings[0].output , LCD_COL);
-  strncat(lcdOutput.line1, "  " , LCD_COL);
-  strncat(lcdOutput.line1, readings[1].description , LCD_COL);
-  strncat(lcdOutput.line1, ":" , LCD_COL);
-  strncat(lcdOutput.line1, readings[1].output , LCD_COL);
-  strncat(lcdOutput.line1, "  " , LCD_COL);
-
-  strncpy(lcdOutput.line2, readings[2].description , LCD_COL);
-  strncat(lcdOutput.line2, ":" , LCD_COL);
-  strncat(lcdOutput.line2, readings[2].output , LCD_COL);
-  strncat(lcdOutput.line2, "  " , LCD_COL);
-  strncat(lcdOutput.line2, readings[3].description , LCD_COL);
-  strncat(lcdOutput.line2, ":" , LCD_COL);
-  strncat(lcdOutput.line2, readings[3].output , LCD_COL);
-  strncat(lcdOutput.line2, "  " , LCD_COL);
-
-  lcdOutput.line1[6] = (char)readings[0].changeChar;
-  lcdOutput.line1[7] = (char)readings[0].enoughData;
-  lcdOutput.line1[14] = (char)readings[1].changeChar;
-  lcdOutput.line1[15] = (char)readings[1].enoughData;
-  lcdOutput.line2[6] = (char)readings[2].changeChar;
-  lcdOutput.line2[7] = (char)readings[2].enoughData;
-  lcdOutput.line2[14] = (char)readings[3].changeChar;
-  lcdOutput.line2[15] = (char)readings[3].enoughData;
-}
-
-void lcd_update_weather() {
-
-  if (weather.updateTime == 0) {
-    strncpy(lcdOutput.line1, "Waiting for       " , LCD_COL);
-    strncpy(lcdOutput.line2, "weather....       " , LCD_COL);
-  }
-  else
-  {
-    sprintf(lcdOutput.line1, "T:%2.1f H:%2.0f" , weather.temperature, weather.humidity );
-    strncpy(lcdOutput.line2, weather.description , LCD_COL);
-
-  }
-  while (strlen(lcdOutput.line1) <= LCD_COL) {
-    strcat(lcdOutput.line1, " ");
-  }
-  while (strlen(lcdOutput.line2) <= LCD_COL) {
-    strcat(lcdOutput.line2, " ");
-  }
-
-}
-
-void lcd_output_t(void * pvParameters ) {
-  int line1Counter = 0;
-  int line2Counter = 0;
-  char line1[255];
-  char line2[255];
-
-
+void tft_output_t(void * pvParameters ) {
+  String weatherDescriptionFirstLetter;
+  String weatherDescriptionTemp;
+  time_t statusChangeTime = 0;
+  bool statusMessageDisplayed = false;
 
   tft.init();
   tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
 
-  strncpy(lcdOutput.line1, "                 ", LCD_COL);
-  strncpy(lcdOutput.line1, "                 ", LCD_COL);
-  lcdValues.on = true;
-  //tft.drawRect(0, 0, 240, 320, TFT_YELLOW);
-  //tft.drawRect(1, 1, 239, 319, TFT_YELLOW);
+  tftValues.on = true;
+  // Set up the tittle message box
   tft.fillRect(0, 0, 240, 20, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_RED);
   tft.drawString(" The Klauss-o-meter V1.0", 40 , 3, 2);
 
 
-  tft.drawRect(20, 30, 200, 130, TFT_BLUE);
+  // Set up the room message box
+  //tft.drawRect(20, 25, 200, 140, TFT_BLUE);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-   tft.drawString(" Rooms ", 30 , 23, 2);
 
-
+  // Set up the weather message box
   tft.drawRect(20, 170, 200, 120, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.drawString(" Weather ", 30 , 163, 2);
 
-  tft.fillRect(0, 291, 240, 29, TFT_CYAN);
+  // Set up the status message box
+  tft.fillRect(0, 296, 240, 24, TFT_CYAN);
   tft.setTextColor(TFT_BLACK, TFT_CYAN);
-  tft.drawString("Current Status Messages", 30 , 300, 2);
-  
-  
+  tft.drawString("", 30 , 300, 2);
+
+
   while (true) {
     delay(100);
-    //tft.setFreeFont(&FreeSans12pt7b);
-    strncpy(line1, lcdOutput.line1, 20);
-    strncpy(line2, lcdOutput.line2, 20);
+    // Update Status Message
 
-    //tft.drawString(line1, 30, 50, 4);
-    //tft.drawString(line2, 30, 100, 4);
+    if (statusChangeTime + STATUS_MESSAGE_TIME < now() && statusMessageDisplayed) {
+      tft.fillRect(0, 296, 240, 24, TFT_CYAN);
+      statusMessageDisplayed = false;
+    }
 
+    if (statusMessageUpdated) {
+      statusMessageUpdated = false;
+      tft.fillRect(0, 296, 240, 24, TFT_CYAN);
+      tft.setTextColor(TFT_BLACK, TFT_CYAN);
+      tft.drawString(statusMessage, 30 , 300, 2);
+      statusMessageDisplayed = true;
+      statusChangeTime = now();
+    }
+
+    // Update rooms
+    if (temperatureUpdated) {
+      temperatureUpdated = false;
+      tft.fillRect(21, 25, 198, 138, TFT_BLACK);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      tft.drawString(readings[0].description, 30 , 30, 2);
+      tft.drawString(readings[0].output, 30 , 50, 6);
+
+      tft.drawString(readings[1].description, 120 , 30, 2);
+      tft.drawString(readings[1].output, 120 , 50, 6);
+
+      tft.drawString(readings[2].description, 30 , 90, 2);
+      tft.drawString(readings[2].output, 30 , 110, 6);
+
+      tft.drawString(readings[3].description, 120 , 90, 2);
+      tft.drawString(readings[3].output, 120 , 110, 6);
+    }
+    if (weatherUpdated) {
+      weatherUpdated = false;
+      tft.fillRect(21, 176, 198, 113, TFT_BLACK);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      String weatherTemp = String(weather.temperature, 1);
+      tft.drawString(weatherTemp, 30 , 190, 6);
+      //tft.drawString(weather.overal, 100 , 200, 4);
+      weatherDescriptionFirstLetter = String(weather.description).substring(0, 1);
+      weatherDescriptionFirstLetter.toUpperCase();
+      weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
+      tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
+
+    }
   }
-
 }
 
 void update_temperature(char* recMessage, int index) {
@@ -476,16 +400,11 @@ void update_temperature(char* recMessage, int index) {
 
   readings[index].readingIndex++;
   readings[index].lastMessageTime = millis();
-  // Force output length to be 2 chars by right padding
-  /*if (readings[index].output.length() > 2) {
-    readings[index].output[2] = 0;   //Truncate long message
-    }
-    if (readings[index].output.length() == 1) {
-    readings[index].output = readings[index].output + " ";
-    }
-    if (readings[index].output.length() == 0) {
-    readings[index].output = "  ";
-    }*/
+  temperatureUpdated = true;
+
+  strncpy(statusMessage, "Update received for ", CHAR_LEN);
+  strncat(statusMessage, readings[index].description , CHAR_LEN);
+  statusMessageUpdated = true;
 }
 
 void update_mqtt_settings() {
@@ -494,7 +413,7 @@ void update_mqtt_settings() {
     if (settings[i].description == DESC_ONOFF) {
       mqttClient.beginMessage(settings[i].confirmTopic);
 
-      mqttClient.print(lcdValues.on);
+      mqttClient.print(tftValues.on);
       mqttClient.endMessage();
     }
   }
@@ -503,16 +422,14 @@ void update_mqtt_settings() {
 void update_on_off(char* recMessage, int index) {
 
   if (strcmp(recMessage, "1") == 0) {
-    lcdValues.on = true;
+    tftValues.on = true;
     settings[index].currentValue = 1;
   }
   if (strcmp(recMessage, "0") == 0) {
-    lcdValues.on = false;
+    tftValues.on = false;
     settings[index].currentValue = 0;
   }
   update_mqtt_settings();
-  // Store for reboot
-  //EEPROM.put(LCD_VALUES_ADDRESS, lcdValues);
 }
 
 void receive_mqtt_messages_t(void * pvParams) {
@@ -580,22 +497,6 @@ void loop() {
     if ((millis() > readings[i].lastMessageTime + (MAX_NO_MESSAGE_SEC * 1000)) && (readings[i].output != NO_READING)) {
       readings[i].changeChar = CHAR_NO_MESSAGE;
     }
-  }
-  if ((int)round(second() / 5) % 2 == 0 || touch_light) {
-    if (lcdOutput.outputType != OUTPUT_TEMPERATURE) {
-      lcdOutput.outputType = OUTPUT_TEMPERATURE;
-      lcdOutput.updated = true;
-    }
-
-    lcd_update_temp();
-  }
-  else
-  {
-    if (lcdOutput.outputType != OUTPUT_WEATHER) {
-      lcdOutput.outputType = OUTPUT_WEATHER;
-      lcdOutput.updated = true;
-    }
-    lcd_update_weather();
   }
 
   if (WiFi.status() != WL_CONNECTED) {
