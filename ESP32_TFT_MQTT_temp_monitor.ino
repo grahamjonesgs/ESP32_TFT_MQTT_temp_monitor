@@ -6,6 +6,11 @@
   NOTE - Error in the ESP32 header file "client.h". Need to edit and comment out the rows
   virtual int connect(IPAddress ip, uint16_t port, int timeout) =0;
   virtual int connect(const char *host, uint16_t port, int timeout) =0;
+
+
+
+
+
 */
 
 //#include <LiquidCrystal_I2C.h>
@@ -394,19 +399,33 @@ void lcd_output_t(void * pvParameters ) {
   lcdValues.on = true;
   //tft.drawRect(0, 0, 240, 320, TFT_YELLOW);
   //tft.drawRect(1, 1, 239, 319, TFT_YELLOW);
+  tft.fillRect(0, 0, 240, 20, TFT_RED);
+  tft.setTextColor(TFT_WHITE, TFT_RED);
+  tft.drawString(" The Klauss-o-meter V1.0", 40 , 3, 2);
 
-tft.drawRect(20, 20, 200, 140, TFT_BLUE);
-tft.drawRect(21, 21, 199, 138, TFT_BLUE);
-tft.drawString(" Rooms ", 30 ,13, 2);
 
+  tft.drawRect(20, 30, 200, 130, TFT_BLUE);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+   tft.drawString(" Rooms ", 30 , 23, 2);
+
+
+  tft.drawRect(20, 170, 200, 120, TFT_RED);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString(" Weather ", 30 , 163, 2);
+
+  tft.fillRect(0, 291, 240, 29, TFT_CYAN);
+  tft.setTextColor(TFT_BLACK, TFT_CYAN);
+  tft.drawString("Current Status Messages", 30 , 300, 2);
+  
+  
   while (true) {
     delay(100);
     //tft.setFreeFont(&FreeSans12pt7b);
     strncpy(line1, lcdOutput.line1, 20);
     strncpy(line2, lcdOutput.line2, 20);
 
-    tft.drawString(line1, 30, 50, 4);
-    tft.drawString(line2, 30, 100, 4);
+    //tft.drawString(line1, 30, 50, 4);
+    //tft.drawString(line2, 30, 100, 4);
 
   }
 
