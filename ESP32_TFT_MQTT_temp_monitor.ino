@@ -12,7 +12,7 @@
 //#include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 #include <ArduinoMqttClient.h>
-//#include <analogWrite.h>
+#include <analogWrite.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
@@ -30,7 +30,7 @@
 struct Readings {                     // Array to hold the incoming measurement
   const char description[CHAR_LEN];   // Currently set to 3 chars long
   const char topic[CHAR_LEN];         // MQTT topic
-  char output[CHAR_LEN];                      // To be output to screen - expected to be 2 chars long
+  char output[CHAR_LEN];              // To be output to screen - expected to be 2 chars long
   float currentValue;                 // Current value received
   float lastValue[STORED_READING];    // Defined that the zeroth element is the oldest
   byte changeChar;                    // To indicate change in status
@@ -85,11 +85,14 @@ struct Weather {
 #define DATA_ONOFF 3
 
 // Define constants used
-#define MAX_NO_MESSAGE_SEC 3600LL        // Time before CHAR_NO_MESSAGE is set in seconds (long) 
+#define MAX_NO_MESSAGE_SEC 1800LL        // Time before CHAR_NO_MESSAGE is set in seconds (long) 
 #define TIME_RETRIES 100                 // Number of time to retry getting the time during setup
 #define TIME_OFFSET 7200                 // Local time offset from UTC
 #define WEATHER_UPDATE_INTERVAL 300      // Interval between weather updates
 #define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
+#define LED_BRIGHT 255
+#define LED_DIM 20
+#define LED_PIN 26
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
@@ -113,25 +116,15 @@ GfxUi ui = GfxUi(&tft); // Jpeg and bmpDraw functions TODO: pull outside of a cl
 // Define eprom address
 #define LCD_VALUES_ADDRESS 0
 
-// for touch
-#define TOUCH_ARRAY_SIZE 100
-#define SENSITIVITY 4  // lower more sensitive
-#define TOUCH_LOOPS_NEEDED 3  // number of touched loops to turn on 
-#define TOUCH_LIGHT_DELAY 10L
-
 // Monitor Heap size for fragmentation
 size_t old_biggest_free_block = 0;
 
 void setup() {
 
   Serial.begin(115200);  // Default speed of esp32
-  xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
-  delay(3000);
-
   SPIFFS.begin();
-  listFiles();
-
-  welcome_message();
+  pinMode(LED_PIN, OUTPUT);
+  xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   network_connect();
   time_init();
   mqtt_connect();
@@ -140,13 +133,6 @@ void setup() {
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
 }
 
-void welcome_message() {
-
-  strncpy(statusMessage, "Welcome to the Klauss-o-meter", CHAR_LEN);
-  statusMessageUpdated = true;
-
-  delay(1000);
-}
 
 void get_weather_t(void * pvParameters ) {
 
@@ -218,7 +204,7 @@ void network_connect() {
 
     delay(500);
   }
-  strncpy(statusMessage, "Connected to: ", CHAR_LEN);
+  strncpy(statusMessage, "Connected to ", CHAR_LEN);
   strncat(statusMessage, WIFI_SSID, CHAR_LEN);
   statusMessageUpdated = true;
 }
@@ -249,13 +235,13 @@ void mqtt_connect() {
   Serial.print("Attempting to connect to the MQTT broker: ");
   Serial.println(MQTT_SERVER);
 
-  strncpy(statusMessage, "Connecting to: ", CHAR_LEN);
+  strncpy(statusMessage, "Connecting to ", CHAR_LEN);
   strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
   statusMessageUpdated = true;
 
   while (!mqttClient.connect(MQTT_SERVER, MQTT_PORT)) {
     Serial.print("MQTT connection failed");
-    strncpy(statusMessage, "Can't connect to: ", CHAR_LEN);
+    strncpy(statusMessage, "Can't connect to ", CHAR_LEN);
     strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
     statusMessageUpdated = true;
     delay(5000);
@@ -271,7 +257,7 @@ void mqtt_connect() {
   for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
     mqttClient.subscribe(settings[i].topic);
   }
-  strncpy(statusMessage, "Connected to: ", CHAR_LEN);
+  strncpy(statusMessage, "Connected to ", CHAR_LEN);
   strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
   statusMessageUpdated = true;
 
@@ -284,6 +270,26 @@ void tft_draw_string_centre(const char* message, int leftx, int rightx, int y, i
 
 }
 
+void draw_temperature_icon (const char changeChar, const char* output, int x, int y) {
+  switch (changeChar) {
+    case CHAR_UP:
+      ui.drawBmp("/temperature/inc.bmp", x, y);
+      break;
+    case CHAR_DOWN:
+      ui.drawBmp("/temperature/dec.bmp", x, y);
+      break;
+    case CHAR_NO_MESSAGE:
+      ui.drawBmp("/temperature/error.bmp", x, y);
+      break;
+    default:
+      if (strcmp(output, NO_READING) != 0) {
+        ui.drawBmp("/temperature/same.bmp", x, y);
+      }
+      break;
+
+  }
+}
+
 
 void tft_output_t(void * pvParameters ) {
   String weatherDescriptionFirstLetter;
@@ -291,44 +297,51 @@ void tft_output_t(void * pvParameters ) {
   time_t statusChangeTime = 0;
   bool statusMessageDisplayed = false;
 
+
+  //  Format definitions
+#define TEMP_LEFT 0
+#define TEMP_RIGHT 220
+#define TEMP_TOP 25
+#define TEMP_BOTTOM 163
+
   tft.init();
+  analogWrite(LED_PIN, LED_BRIGHT);
   tft.setRotation(0);
+  ui.drawBmp("/images/beach.bmp", 0, 0);
+  delay(5000);
   tft.fillScreen(TFT_BLACK);
 
   tftValues.on = true;
   // Set up the tittle message box
-  tft.fillRect(0, 0, 240, 20, TFT_RED);
-  tft.setTextColor(TFT_WHITE, TFT_RED);
+  tft.fillRect(0, 0, 240, 20, TFT_GREEN);
+  tft.setTextColor(TFT_BLACK, TFT_GREEN);
   tft_draw_string_centre(" The Klauss-o-meter V1.0", 0, 240, 3, 2);
-
-  // Set up the room message box
-  //tft.drawRect(20, 25, 200, 140, TFT_BLUE);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
   // Set up the weather message box
   tft.drawRect(20, 170, 200, 120, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.drawString(" Weather ", 30 , 163, 2);
 
-  // Set up the status message box
-  tft.fillRect(0, 296, 240, 24, TFT_CYAN);
-  tft.setTextColor(TFT_BLACK, TFT_CYAN);
-  tft.drawString("", 30 , 300, 2);
-
-
   while (true) {
     delay(100);
-    // Update Status Message
+    if (tftValues.on) {
+      analogWrite(LED_PIN, LED_BRIGHT);
+    }
+    else
+    {
+      analogWrite(LED_PIN, LED_DIM);
+    }
 
+    // Remove old status messages
     if (statusChangeTime + STATUS_MESSAGE_TIME < now() && statusMessageDisplayed) {
-      tft.fillRect(0, 296, 240, 24, TFT_CYAN);
+      tft.fillRect(0, 296, 240, 24, TFT_BLACK);
       statusMessageDisplayed = false;
     }
 
     if (statusMessageUpdated) {
       statusMessageUpdated = false;
-      tft.fillRect(0, 296, 240, 24, TFT_CYAN);
-      tft.setTextColor(TFT_BLACK, TFT_CYAN);
+      tft.fillRect(0, 296, 240, 24, TFT_BLACK);
+      tft.setTextColor(TFT_CYAN, TFT_BLACK);
       tft_draw_string_centre(statusMessage, 0, 240, 300, 2);
       statusMessageDisplayed = true;
       statusChangeTime = now();
@@ -337,68 +350,27 @@ void tft_output_t(void * pvParameters ) {
     // Update rooms
     if (temperatureUpdated) {
       temperatureUpdated = false;
-      tft.fillRect(21, 25, 198, 138, TFT_BLACK);
+      tft.fillRect(TEMP_LEFT, TEMP_TOP, TEMP_RIGHT - TEMP_LEFT, TEMP_BOTTOM - TEMP_TOP, TFT_BLACK);
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
 
-      // The zones for the rooms are x 21 to 219 width of 198. Give centre boarder of 10 points gives
-      // First zone 21 to 115, second 125 to 219, width of 94.
+      tft_draw_string_centre(readings[0].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 5, 2);
+      tft_draw_string_centre(readings[0].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 25, 6);
+      draw_temperature_icon(readings[0].changeChar, readings[0].output, TEMP_LEFT + 90, TEMP_TOP + 25);
 
-      tft_draw_string_centre(readings[0].description, 21, 115, 30, 2);
-      tft_draw_string_centre(readings[0].output, 21, 115, 50, 6);
-      switch (readings[0].changeChar) {
-        case CHAR_UP:
-          ui.drawBmp("/temperature/inc.bmp", 100, 45);
-          break;
-        case CHAR_DOWN:
-          ui.drawBmp("/temperature/dec.bmp", 100, 45);
-          break;
-        case CHAR_SAME:
-          ui.drawBmp("/temperature/same.bmp", 100, 45);
-          break;
+      tft_draw_string_centre(readings[1].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 5, 2);
+      tft_draw_string_centre(readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2,  TEMP_RIGHT, TEMP_TOP + 25, 6);
+      draw_temperature_icon(readings[1].changeChar, readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 25);
 
-      }
+      tft_draw_string_centre(readings[2].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 65, 2);
+      tft_draw_string_centre(readings[2].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 85, 6);
+      draw_temperature_icon(readings[2].changeChar, readings[2].output, TEMP_LEFT + 90, TEMP_TOP + 85);
 
-      tft_draw_string_centre(readings[1].description, 125, 219, 30, 2);
-      tft_draw_string_centre(readings[1].output, 125, 219, 50, 6);
-      switch (readings[1].changeChar) {
-        case CHAR_UP:
-          ui.drawBmp("/temperature/inc.bmp", 204, 45);
-          break;
-        case CHAR_DOWN:
-          ui.drawBmp("/temperature/dec.bmp", 204, 45);
-          break;
-        case CHAR_SAME:
-          ui.drawBmp("/temperature/same.bmp", 204, 45);
-          break;
-      }
-      tft_draw_string_centre(readings[2].description, 21, 115, 90, 2);
-      tft_draw_string_centre(readings[2].output, 21, 115, 110, 6);
-      switch (readings[2].changeChar) {
-        case CHAR_UP:
-          ui.drawBmp("/temperature/inc.bmp", 100, 105);
-          break;
-        case CHAR_DOWN:
-          ui.drawBmp("/temperature/dec.bmp", 100, 105);
-          break;
-        case CHAR_SAME:
-          ui.drawBmp("/temperature/same.bmp", 100, 105);
-          break;
-      }
-      tft_draw_string_centre(readings[3].description, 125, 219, 90, 2);
-      tft_draw_string_centre(readings[3].output, 125, 219, 110, 6);
-      switch (readings[2].changeChar) {
-        case CHAR_UP:
-          ui.drawBmp("/temperature/inc.bmp", 204, 105);
-          break;
-        case CHAR_DOWN:
-          ui.drawBmp("/temperature/dec.bmp", 204, 105);
-          break;
-        case CHAR_SAME:
-          ui.drawBmp("/temperature/same.bmp", 204, 105);
-          break;
-      }
+      tft_draw_string_centre(readings[3].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 65, 2);
+      tft_draw_string_centre(readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 85, 6);
+      draw_temperature_icon(readings[3].changeChar, readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 85);
     }
+
     if (weatherUpdated) {
       weatherUpdated = false;
       tft.fillRect(21, 176, 198, 113, TFT_BLACK);
