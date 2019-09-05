@@ -1,4 +1,3 @@
-
 /*
    For I2C SDA PIN 21
            SLC PIN 22
@@ -6,9 +5,6 @@
   NOTE - Error in the ESP32 header file "client.h". Need to edit and comment out the rows
   virtual int connect(IPAddress ip, uint16_t port, int timeout) =0;
   virtual int connect(const char *host, uint16_t port, int timeout) =0;
-
-
-
 
 
 */
@@ -25,8 +21,9 @@
 #include <SPI.h>
 #include <TimeLib.h>
 #include <ArduinoJson.h>
+#include "GfxUi.h"          // Attached to this sketch
+#include "SPIFFS_Support.h" // Attached to this sketch
 #include "network_config.h"
-#include "weathericons.h"
 
 #define CHAR_LEN 255
 
@@ -61,6 +58,7 @@ struct Weather {
   float humidity;
   char overal[CHAR_LEN];
   char description[CHAR_LEN];
+  char icon[CHAR_LEN];
   time_t updateTime;
 };
 
@@ -96,7 +94,7 @@ struct Weather {
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
-Weather weather = {0.0, 0, 0.0, "", "", 0};
+Weather weather = {0.0, 0, 0.0, "", "", "", 0};
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
 bool temperatureUpdated = true;
@@ -110,6 +108,7 @@ MqttClient mqttClient(wifiClient);
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, TIME_OFFSET);
 TFT_eSPI tft = TFT_eSPI();
+GfxUi ui = GfxUi(&tft); // Jpeg and bmpDraw functions TODO: pull outside of a class
 
 // Define eprom address
 #define LCD_VALUES_ADDRESS 0
@@ -128,6 +127,10 @@ void setup() {
   Serial.begin(115200);  // Default speed of esp32
   xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   delay(3000);
+
+  SPIFFS.begin();
+  listFiles();
+
   welcome_message();
   network_connect();
   time_init();
@@ -180,12 +183,14 @@ void get_weather_t(void * pvParameters ) {
         int weatherHumidity = root["main"]["humidity"];
         const char* weatherOveral = root["weather"][0]["main"];
         const char* weatherDescription = root["weather"][0]["description"];
+        const char* weatherIcon = root["weather"][0]["icon"];
 
         weather.temperature = weatherTemperature;
         weather.pressure = weatherPressure;
         weather.humidity = weatherHumidity;
         strncpy(weather.description, weatherDescription, CHAR_LEN);
         strncpy(weather.overal, weatherOveral, CHAR_LEN);
+        strncpy(weather.icon, weatherIcon, CHAR_LEN);
         weather.updateTime = now();
         Serial.println("Weather Updated");
         weatherUpdated = true;
@@ -295,7 +300,7 @@ void tft_output_t(void * pvParameters ) {
   tft.fillRect(0, 0, 240, 20, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_RED);
   tft_draw_string_centre(" The Klauss-o-meter V1.0", 0, 240, 3, 2);
- 
+
   // Set up the room message box
   //tft.drawRect(20, 25, 200, 140, TFT_BLUE);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -341,13 +346,58 @@ void tft_output_t(void * pvParameters ) {
 
       tft_draw_string_centre(readings[0].description, 21, 115, 30, 2);
       tft_draw_string_centre(readings[0].output, 21, 115, 50, 6);
+      switch (readings[0].changeChar) {
+        case CHAR_UP:
+          ui.drawBmp("/temperature/inc.bmp", 100, 45);
+          break;
+        case CHAR_DOWN:
+          ui.drawBmp("/temperature/dec.bmp", 100, 45);
+          break;
+        case CHAR_SAME:
+          ui.drawBmp("/temperature/same.bmp", 100, 45);
+          break;
+
+      }
+
       tft_draw_string_centre(readings[1].description, 125, 219, 30, 2);
       tft_draw_string_centre(readings[1].output, 125, 219, 50, 6);
+      switch (readings[1].changeChar) {
+        case CHAR_UP:
+          ui.drawBmp("/temperature/inc.bmp", 204, 45);
+          break;
+        case CHAR_DOWN:
+          ui.drawBmp("/temperature/dec.bmp", 204, 45);
+          break;
+        case CHAR_SAME:
+          ui.drawBmp("/temperature/same.bmp", 204, 45);
+          break;
+      }
       tft_draw_string_centre(readings[2].description, 21, 115, 90, 2);
       tft_draw_string_centre(readings[2].output, 21, 115, 110, 6);
+      switch (readings[2].changeChar) {
+        case CHAR_UP:
+          ui.drawBmp("/temperature/inc.bmp", 100, 105);
+          break;
+        case CHAR_DOWN:
+          ui.drawBmp("/temperature/dec.bmp", 100, 105);
+          break;
+        case CHAR_SAME:
+          ui.drawBmp("/temperature/same.bmp", 100, 105);
+          break;
+      }
       tft_draw_string_centre(readings[3].description, 125, 219, 90, 2);
       tft_draw_string_centre(readings[3].output, 125, 219, 110, 6);
-
+      switch (readings[2].changeChar) {
+        case CHAR_UP:
+          ui.drawBmp("/temperature/inc.bmp", 204, 105);
+          break;
+        case CHAR_DOWN:
+          ui.drawBmp("/temperature/dec.bmp", 204, 105);
+          break;
+        case CHAR_SAME:
+          ui.drawBmp("/temperature/same.bmp", 204, 105);
+          break;
+      }
     }
     if (weatherUpdated) {
       weatherUpdated = false;
@@ -360,9 +410,7 @@ void tft_output_t(void * pvParameters ) {
       weatherDescriptionFirstLetter.toUpperCase();
       weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
       tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
-      //tft.setSwapBytes(true);
-      //tft.pushImage(100, 100, 99, 100, chancesnow);
-       //tft.drawBitmap(100,100,icon_09d,99,100,TFT_BLUE);
+      ui.drawBmp("/owicon/" + String(weather.icon) + ".bmp", 140, 190);
     }
   }
 }
