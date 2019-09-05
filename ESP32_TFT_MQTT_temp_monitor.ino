@@ -1,11 +1,22 @@
 /*
-   For I2C SDA PIN 21
-           SLC PIN 22
 
   NOTE - Error in the ESP32 header file "client.h". Need to edit and comment out the rows
   virtual int connect(IPAddress ip, uint16_t port, int timeout) =0;
   virtual int connect(const char *host, uint16_t port, int timeout) =0;
 
+  // Define Pins
+  #define TFT_MISO 22
+  #define TFT_MOSI 23
+  #define TFT_SCLK 18
+  #define TFT_CS   21  // Chip select control pin
+  #define TFT_DC    19  // Data Command control pin
+  #define TFT_RST   5 // Reset pin (could connect to RST pin)
+  #define TOUCH_CS 27     // Chip select pin (T_CS) of touch screen
+
+  For touch LSO need to common
+  T_DO / TFT_MISO
+  T_DIN  / TFT_MOSI
+  T_CLK / SCLK
 
 */
 
@@ -100,7 +111,11 @@ Settings settings[] {SETTINGS_ARRAY };
 Weather weather = {0.0, 0, 0.0, "", "", "", 0};
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
-bool temperatureUpdated = true;
+bool temperature0Updated = true;
+bool temperature1Updated = true;
+bool temperature2Updated = true;
+bool temperature3Updated = true;
+
 bool weatherUpdated = false;
 
 TftValues tftValues;
@@ -348,28 +363,36 @@ void tft_output_t(void * pvParameters ) {
     }
 
     // Update rooms
-    if (temperatureUpdated) {
-      temperatureUpdated = false;
-      tft.fillRect(TEMP_LEFT, TEMP_TOP, TEMP_RIGHT - TEMP_LEFT, TEMP_BOTTOM - TEMP_TOP, TFT_BLACK);
-      tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
-
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    if (temperature0Updated) {
+      temperature0Updated = false;
+      tft.fillRect(TEMP_LEFT, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
       tft_draw_string_centre(readings[0].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 5, 2);
-      tft_draw_string_centre(readings[0].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 25, 6);
-      draw_temperature_icon(readings[0].changeChar, readings[0].output, TEMP_LEFT + 90, TEMP_TOP + 25);
-
-      tft_draw_string_centre(readings[1].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 5, 2);
-      tft_draw_string_centre(readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2,  TEMP_RIGHT, TEMP_TOP + 25, 6);
-      draw_temperature_icon(readings[1].changeChar, readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 25);
-
-      tft_draw_string_centre(readings[2].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 65, 2);
-      tft_draw_string_centre(readings[2].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 85, 6);
-      draw_temperature_icon(readings[2].changeChar, readings[2].output, TEMP_LEFT + 90, TEMP_TOP + 85);
-
-      tft_draw_string_centre(readings[3].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 65, 2);
-      tft_draw_string_centre(readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 85, 6);
-      draw_temperature_icon(readings[3].changeChar, readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 85);
+      tft_draw_string_centre(readings[0].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 23, 6);
+      draw_temperature_icon(readings[0].changeChar, readings[0].output, TEMP_LEFT + 90, TEMP_TOP + 23);
     }
+    if (temperature1Updated) {
+      temperature1Updated = false;
+      tft.fillRect((TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
+      tft_draw_string_centre(readings[1].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 5, 2);
+      tft_draw_string_centre(readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2,  TEMP_RIGHT, TEMP_TOP + 23, 6);
+      draw_temperature_icon(readings[1].changeChar, readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 23);
+    }
+    if (temperature2Updated) {
+      tft.fillRect(TEMP_LEFT, (TEMP_BOTTOM - TEMP_TOP) /2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
+      temperature2Updated = false;
+      tft_draw_string_centre(readings[2].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 70, 2);
+      tft_draw_string_centre(readings[2].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 88, 6);
+      draw_temperature_icon(readings[2].changeChar, readings[2].output, TEMP_LEFT + 90, TEMP_TOP + 88);
+    }
+    if (temperature3Updated) {
+      temperature3Updated = false;
+      tft.fillRect((TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
+      tft_draw_string_centre(readings[3].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 70, 2);
+      tft_draw_string_centre(readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 88, 6);
+      draw_temperature_icon(readings[3].changeChar, readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 88);
+    }
+
 
     if (weatherUpdated) {
       weatherUpdated = false;
@@ -432,7 +455,22 @@ void update_temperature(char* recMessage, int index) {
 
   readings[index].readingIndex++;
   readings[index].lastMessageTime = millis();
-  temperatureUpdated = true;
+  switch (index) {
+    case 0:
+      temperature0Updated = true;
+      break;
+    case 1:
+      temperature1Updated = true;
+      break;
+    case 2:
+      temperature2Updated = true;
+      break;
+    case 3:
+      temperature3Updated = true;
+      break;
+  }
+
+
 
   strncpy(statusMessage, "Update received for ", CHAR_LEN);
   strncat(statusMessage, readings[index].description , CHAR_LEN);
