@@ -4,19 +4,44 @@
   virtual int connect(IPAddress ip, uint16_t port, int timeout) =0;
   virtual int connect(const char *host, uint16_t port, int timeout) =0;
 
-  // Define Pins
+  // Define in user_setup.h in the library directory in TFT_eSPI
   #define TFT_MISO 22
   #define TFT_MOSI 23
   #define TFT_SCLK 18
   #define TFT_CS   21  // Chip select control pin
   #define TFT_DC    19  // Data Command control pin
   #define TFT_RST   5 // Reset pin (could connect to RST pin)
-  #define TOUCH_CS 27     // Chip select pin (T_CS) of touch screen
+  #define TOUCH_CS 2     // Chip select pin (T_CS) of touch screen
+
+  // Defned in this file
+  #define LED_PIN 4
 
   For touch LSO need to common
   T_DO / TFT_MISO
   T_DIN  / TFT_MOSI
   T_CLK / SCLK
+
+
+  Order of PIN on TFT         Ordered in one side of ESP32
+
+  VCC                         VCC
+  GND                         GND
+  CS                          15
+  Reset                       4
+  D/C                         2
+  MOSI                        5
+  SCK                         18
+  LED                         19
+  MISO                        21
+  T_CLK (paired with SCLK)    xx 
+  T_CS                        22
+  T_DIN (paired with MOSI)    xx
+  T_DO  (paired with MISO)    xx
+
+  Touch caib settings
+  uint16_t calData[5] = { 307, 3372, 446, 3129, 1 };
+  tft.setTouch(calData);
+
 
 */
 
@@ -70,6 +95,7 @@ struct Weather {
   char overal[CHAR_LEN];
   char description[CHAR_LEN];
   char icon[CHAR_LEN];
+  long timeOffset;
   time_t updateTime;
 };
 
@@ -98,17 +124,16 @@ struct Weather {
 // Define constants used
 #define MAX_NO_MESSAGE_SEC 1800LL        // Time before CHAR_NO_MESSAGE is set in seconds (long) 
 #define TIME_RETRIES 100                 // Number of time to retry getting the time during setup
-#define TIME_OFFSET 7200                 // Local time offset from UTC
 #define WEATHER_UPDATE_INTERVAL 300      // Interval between weather updates
 #define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
 #define LED_BRIGHT 255
 #define LED_DIM 20
-#define LED_PIN 26
+#define LED_PIN 4
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
-Weather weather = {0.0, 0, 0.0, "", "", "", 0};
+Weather weather = {0.0, 0, 0.0, "", "", "", 0,0};
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
 bool temperature0Updated = true;
@@ -124,7 +149,7 @@ WiFiClientSecure wifiClient;
 WiFiClient wifiClientWeather;
 MqttClient mqttClient(wifiClient);
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, TIME_OFFSET);
+NTPClient timeClient(ntpUDP);
 TFT_eSPI tft = TFT_eSPI();
 GfxUi ui = GfxUi(&tft); // Jpeg and bmpDraw functions TODO: pull outside of a class
 
@@ -185,10 +210,12 @@ void get_weather_t(void * pvParameters ) {
         const char* weatherOveral = root["weather"][0]["main"];
         const char* weatherDescription = root["weather"][0]["description"];
         const char* weatherIcon = root["weather"][0]["icon"];
+        long timeOffset = root["timezone"];
 
         weather.temperature = weatherTemperature;
         weather.pressure = weatherPressure;
         weather.humidity = weatherHumidity;
+        weather.timeOffset = timeOffset;
         strncpy(weather.description, weatherDescription, CHAR_LEN);
         strncpy(weather.overal, weatherOveral, CHAR_LEN);
         strncpy(weather.icon, weatherIcon, CHAR_LEN);
@@ -197,6 +224,7 @@ void get_weather_t(void * pvParameters ) {
         weatherUpdated = true;
         strncpy(statusMessage, "Weather updated", CHAR_LEN);
         statusMessageUpdated = true;
+        timeClient.setTimeOffset(timeOffset); 
       }
 
       wifiClientWeather.flush();
@@ -307,17 +335,15 @@ void draw_temperature_icon (const char changeChar, const char* output, int x, in
 
 
 void tft_output_t(void * pvParameters ) {
-  String weatherDescriptionFirstLetter;
-  String weatherDescriptionTemp;
-  time_t statusChangeTime = 0;
-  bool statusMessageDisplayed = false;
-
-
-  //  Format definitions
 #define TEMP_LEFT 0
 #define TEMP_RIGHT 220
 #define TEMP_TOP 25
 #define TEMP_BOTTOM 163
+  
+  //String weatherDescriptionFirstLetter;
+  //String weatherDescriptionTemp;
+  time_t statusChangeTime = 0;
+  bool statusMessageDisplayed = false;
 
   tft.init();
   analogWrite(LED_PIN, LED_BRIGHT);
@@ -369,28 +395,28 @@ void tft_output_t(void * pvParameters ) {
       tft.fillRect(TEMP_LEFT, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
       tft_draw_string_centre(readings[0].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 5, 2);
       tft_draw_string_centre(readings[0].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 23, 6);
-      draw_temperature_icon(readings[0].changeChar, readings[0].output, TEMP_LEFT + 90, TEMP_TOP + 23);
+      draw_temperature_icon(readings[0].changeChar, readings[0].output, TEMP_LEFT + 85, TEMP_TOP + 23);
     }
     if (temperature1Updated) {
       temperature1Updated = false;
       tft.fillRect((TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
       tft_draw_string_centre(readings[1].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 5, 2);
       tft_draw_string_centre(readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2,  TEMP_RIGHT, TEMP_TOP + 23, 6);
-      draw_temperature_icon(readings[1].changeChar, readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 23);
+      draw_temperature_icon(readings[1].changeChar, readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 85, TEMP_TOP + 23);
     }
     if (temperature2Updated) {
       tft.fillRect(TEMP_LEFT, (TEMP_BOTTOM - TEMP_TOP) /2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
       temperature2Updated = false;
       tft_draw_string_centre(readings[2].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 70, 2);
       tft_draw_string_centre(readings[2].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 88, 6);
-      draw_temperature_icon(readings[2].changeChar, readings[2].output, TEMP_LEFT + 90, TEMP_TOP + 88);
+      draw_temperature_icon(readings[2].changeChar, readings[2].output, TEMP_LEFT + 85, TEMP_TOP + 88);
     }
     if (temperature3Updated) {
       temperature3Updated = false;
       tft.fillRect((TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
       tft_draw_string_centre(readings[3].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 70, 2);
       tft_draw_string_centre(readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 88, 6);
-      draw_temperature_icon(readings[3].changeChar, readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 90, TEMP_TOP + 88);
+      draw_temperature_icon(readings[3].changeChar, readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 85, TEMP_TOP + 88);
     }
 
 
@@ -401,10 +427,12 @@ void tft_output_t(void * pvParameters ) {
       String weatherTemp = String(weather.temperature, 1);
       tft.drawString(weatherTemp, 30 , 190, 6);
       //tft.drawString(weather.overal, 100 , 200, 4);
-      weatherDescriptionFirstLetter = String(weather.description).substring(0, 1);
-      weatherDescriptionFirstLetter.toUpperCase();
-      weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
-      tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
+      weather.description[0] = toupper(weather.description[0]);
+      //weatherDescriptionFirstLetter = String(weather.description).substring(0, 1);
+      //weatherDescriptionFirstLetter.toUpperCase();
+      //weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
+      //tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
+      tft.drawString(weather.description, 30 , 240, 4);
       ui.drawBmp("/owicon/" + String(weather.icon) + ".bmp", 140, 190);
     }
   }
