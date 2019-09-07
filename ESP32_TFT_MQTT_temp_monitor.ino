@@ -166,23 +166,10 @@ void setup() {
   Serial.begin(115200);  // Default speed of esp32
   SPIFFS.begin();
 
-  File root = SPIFFS.open("/");
-
-  File file = root.openNextFile();
-
-  while (file) {
-
-    Serial.print("FILE: ");
-    Serial.println(file.name());
-
-    file = root.openNextFile();
-  }
-
   pinMode(LED_PIN, OUTPUT);
   xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   network_connect();
   time_init();
-  mqtt_connect();
 
   xTaskCreatePinnedToCore( get_weather_t, "Get Weather", 8192 , NULL, 3, NULL, 0 );
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
@@ -292,15 +279,15 @@ void mqtt_connect() {
   strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
   statusMessageUpdated = true;
 
-  while (!mqttClient.connect(MQTT_SERVER, MQTT_PORT)) {
+  if (!mqttClient.connect(MQTT_SERVER, MQTT_PORT)) {
     Serial.print("MQTT connection failed");
     strncpy(statusMessage, "Can't connect to ", CHAR_LEN);
     strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
     statusMessageUpdated = true;
-    delay(5000);
-    ESP.restart();
+    delay(2000);
+    return;
   }
-
+ 
   Serial.println("Connected to the MQTT broker");
 
   for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
@@ -445,12 +432,7 @@ void tft_output_t(void * pvParameters ) {
       //weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
       //tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
       tft.drawString(weather.description, 30 , 240, 4);
-      Serial.println(String("Icon file is:") + String("/wbicons/") + String(weather.icon) + String(".bmp"));
-
-      // xxxxxxxxxxxxxxxx temp icon for testing
-
-      ui.drawBmp("/test/c01d50.bmp", 140, 190);
-      //ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", 140, 190);
+      ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", 140, 190);
     }
   }
 }
