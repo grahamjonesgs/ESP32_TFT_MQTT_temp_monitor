@@ -21,7 +21,6 @@
   T_DIN  / TFT_MOSI
   T_CLK / SCLK
 
-
   Order of PIN on TFT         Ordered in one side of ESP32
 
   VCC                         VCC
