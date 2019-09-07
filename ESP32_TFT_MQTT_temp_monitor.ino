@@ -100,6 +100,17 @@ struct Weather {
   time_t updateTime;
 };
 
+struct Forecast {
+  time_t dateTime;
+  float maxTemp;
+  float minTemp;
+  char description[CHAR_LEN];
+  char icon[CHAR_LEN];
+  float moonPhase;
+};
+
+
+
 // Array and TFT string settings
 #define NO_READING "--"            // Screen output before any mesurement is received
 #define DESC_ONOFF "ONO"
@@ -125,7 +136,9 @@ struct Weather {
 // Define constants used
 #define MAX_NO_MESSAGE_SEC 1800LL        // Time before CHAR_NO_MESSAGE is set in seconds (long) 
 #define TIME_RETRIES 100                 // Number of time to retry getting the time during setup
-#define WEATHER_UPDATE_INTERVAL 300      // Interval between weather updates
+#define WEATHER_UPDATE_INTERVAL 600      // Interval between weather updates
+#define FORECAST_UPDATE_INTERVAL 1800     // Interval between forecast updates
+#define FORECAST_DAYS 5                  // Number of day's forecast to request
 #define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
 #define LED_BRIGHT 255
 #define LED_DIM 20
@@ -135,6 +148,8 @@ struct Weather {
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
 Weather weather = {0.0, 0, 0.0, "", "", "", 0, 0};
+Forecast forecast[FORECAST_DAYS];
+time_t forecastUpdateTime = 0;
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
 bool temperature0Updated = true;
@@ -147,8 +162,7 @@ bool weatherUpdated = false;
 TftValues tftValues;
 
 WiFiClientSecure wifiClient;
-//WiFiClient wifiClientWeather;
-HTTPClient wifiClientWeather;
+HTTPClient httpClientWeather;
 MqttClient mqttClient(wifiClient);
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
@@ -187,18 +201,15 @@ void get_weather_t(void * pvParameters ) {
 
 
   // https://api.weatherbit.io/v2.0/current?city=munich&key=c8b9c930deae44c1990332a5297982c5
+
   while (true) {
     delay(2000);
     if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
-      wifiClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
-      int httpCode = wifiClientWeather.GET();
-
-      // httpCode will be negative on error
+      httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
+      int httpCode = httpClientWeather.GET();
       if (httpCode > 0) {
-        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
         if (httpCode == HTTP_CODE_OK) {
-          String payload = wifiClientWeather.getString();
-          Serial.println(payload);
+          String payload = httpClientWeather.getString();
 
           DynamicJsonDocument root(5000);
           auto deseraliseError = deserializeJson(root, payload);
@@ -223,10 +234,62 @@ void get_weather_t(void * pvParameters ) {
         }
       } else
       {
-        Serial.printf("[HTTP] GET... failed, error: %s\n", wifiClientWeather.errorToString(httpCode).c_str());
+        Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
+      }
+    }
+
+    if (now() - forecastUpdateTime > FORECAST_UPDATE_INTERVAL) {
+      httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/daily?city=" + String(LOCATION) + +"&days=" + String(FORECAST_DAYS) + "&key=" + String(apiKey));
+      int httpCode = httpClientWeather.GET();
+      if (httpCode > 0) {
+        if (httpCode == HTTP_CODE_OK) {
+          String payload = httpClientWeather.getString();
+
+          DynamicJsonDocument root(10000);
+          auto deseraliseError = deserializeJson(root, payload);
+          for (int i = 0; i < FORECAST_DAYS; i++) {
+
+
+            struct Forecast {
+              time_t dateTime;
+              float maxTemp;
+              float minTemp;
+              char description[CHAR_LEN];
+              char icon[CHAR_LEN];
+              float moonPhase;
+            };
+
+            time_t forecastTime = root["data"][i]["ts"];
+            float forecastMaxTemp = root["data"][i]["max_temp"];
+            float forecastMinTemp = root["data"][i]["min_temp"];
+            float forecastMoon = root["data"][i]["weather"]["moon_phase"];
+            const char* forecastDescription = root["data"][i]["weather"]["description"];
+            const char* forecastIcon = root["data"][i]["weather"]["icon"];
+
+            forecast[i].dateTime = forecastTime;
+            forecast[i].maxTemp = forecastMaxTemp;
+            forecast[i].minTemp = forecastMinTemp;
+            forecast[i].moonPhase = forecastMoon;
+            if (forecastDescription != 0) {
+              strncpy(forecast[i].description, forecastDescription, CHAR_LEN);
+            }
+            if (forecastIcon != 0) {
+              strncpy(forecast[i].icon, forecastIcon, CHAR_LEN);
+            }
+
+          }
+          forecastUpdateTime = now();
+          strncpy(statusMessage, "Forecast updated", CHAR_LEN);
+          statusMessageUpdated = true;
+          weatherUpdated = true;
+        }
+      } else
+      {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
       }
 
-      wifiClientWeather.end();
+
+      httpClientWeather.end();
     }
   }
 }
@@ -287,7 +350,7 @@ void mqtt_connect() {
     delay(2000);
     return;
   }
- 
+
   Serial.println("Connected to the MQTT broker");
 
   for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
@@ -358,9 +421,10 @@ void tft_output_t(void * pvParameters ) {
   tft_draw_string_centre(" The Klauss-o-meter V1.0", 0, 240, 3, 2);
 
   // Set up the weather message box
-  tft.drawRect(20, 170, 200, 120, TFT_RED);
+  tft.drawLine(0, 170, 240, 170, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawString(" Weather ", 30 , 163, 2);
+  tft_draw_string_centre(" Weather ", 0, 240, 163, 2);
+
 
   while (true) {
     delay(100);
@@ -425,15 +489,18 @@ void tft_output_t(void * pvParameters ) {
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
       String weatherTemp = String(weather.temperature, 1);
       tft.drawString(weatherTemp, 30 , 190, 6);
-      //tft.drawString(weather.overal, 100 , 200, 4);
       weather.description[0] = toupper(weather.description[0]);
-      //weatherDescriptionFirstLetter = String(weather.description).substring(0, 1);
-      //weatherDescriptionFirstLetter.toUpperCase();
-      //weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
-      //tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
-      tft.drawString(weather.description, 30 , 240, 4);
+      //tft.drawString(weather.description, 30 , 240, 4);
       ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", 140, 190);
+      tft_draw_string_centre(dayShortStr(weekday(forecast[2].dateTime)), 0, 240 / 3, 230, 2);
+      tft_draw_string_centre(dayShortStr(weekday(forecast[3].dateTime)), 240 / 3, 2 * 240 / 3, 230, 2);
+      tft_draw_string_centre(dayShortStr(weekday(forecast[4].dateTime)), 2 * 240 / 3, 240, 230, 2);
+      ui.drawBmp("/wbicons/" + String(forecast[2].icon) + ".bmp", (240 / 6) - 50 / 2, 250);
+      ui.drawBmp("/wbicons/" + String(forecast[3].icon) + ".bmp", (3 * 240 / 6) - 50 / 2, 250);
+      ui.drawBmp("/wbicons/" + String(forecast[4].icon) + ".bmp", (5 * 240 / 6) - 50 / 2, 250);
+
     }
+
   }
 }
 
@@ -539,7 +606,6 @@ void receive_mqtt_messages_t(void * pvParams) {
   while (true) {
     delay(10);
     if (!mqttClient.connected()) {
-      Serial.println("MQTT error detected");
       mqtt_connect();
     }
 
