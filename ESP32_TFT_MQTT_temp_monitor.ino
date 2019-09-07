@@ -33,7 +33,7 @@
   SCK                         18
   LED                         19
   MISO                        21
-  T_CLK (paired with SCLK)    xx 
+  T_CLK (paired with SCLK)    xx
   T_CS                        22
   T_DIN (paired with MOSI)    xx
   T_DO  (paired with MISO)    xx
@@ -52,6 +52,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
+#include <HTTPClient.h>
 #include <NTPClient.h>
 #include <TFT_eSPI.h> // Hardware-specific library
 #include <SPI.h>
@@ -133,7 +134,7 @@ struct Weather {
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
-Weather weather = {0.0, 0, 0.0, "", "", "", 0,0};
+Weather weather = {0.0, 0, 0.0, "", "", "", 0, 0};
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
 bool temperature0Updated = true;
@@ -146,7 +147,8 @@ bool weatherUpdated = false;
 TftValues tftValues;
 
 WiFiClientSecure wifiClient;
-WiFiClient wifiClientWeather;
+//WiFiClient wifiClientWeather;
+HTTPClient wifiClientWeather;
 MqttClient mqttClient(wifiClient);
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
@@ -163,6 +165,19 @@ void setup() {
 
   Serial.begin(115200);  // Default speed of esp32
   SPIFFS.begin();
+
+  File root = SPIFFS.open("/");
+
+  File file = root.openNextFile();
+
+  while (file) {
+
+    Serial.print("FILE: ");
+    Serial.println(file.name());
+
+    file = root.openNextFile();
+  }
+
   pinMode(LED_PIN, OUTPUT);
   xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   network_connect();
@@ -176,61 +191,56 @@ void setup() {
 
 void get_weather_t(void * pvParameters ) {
 
-  const char apiKey[] = OPEN_WEATHER_API_KEY;
+  //const char apiKey[] = OPEN_WEATHER_API_KEY;
+  const char apiKey[] = WEATHERBIT_API_KEY;
   const char weather_server[] = WEATHER_SERVER;
   const char location[] = LOCATION;
+  char line[CHAR_LEN];
+  String requestUrl;
 
+
+  // https://api.weatherbit.io/v2.0/current?city=munich&key=c8b9c930deae44c1990332a5297982c5
   while (true) {
     delay(2000);
     if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
-      if (wifiClientWeather.connect(weather_server, 80)) {
-        wifiClientWeather.print(F("GET /data/2.5/weather?"));
-        wifiClientWeather.print(F("q="));
-        wifiClientWeather.print(location);
-        wifiClientWeather.print(F("&appid="));
-        wifiClientWeather.print(apiKey);
-        wifiClientWeather.print(F("&cnt=3"));
-        wifiClientWeather.println(F("&units=metric"));
-        wifiClientWeather.println(F("Host: api.openweathermap.org"));
-        wifiClientWeather.println(F("Connection: close"));
-        wifiClientWeather.println();
-      } else {
-        Serial.println(F("unable to connect to weather server"));
-      }
-      delay(2000);
-      String line = "";
+      wifiClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
+      int httpCode = wifiClientWeather.GET();
 
-      line = wifiClientWeather.readStringUntil('\n');
-      if (line.length() != 0) {
-        DynamicJsonDocument root(1000);
-        auto deseraliseError = deserializeJson(root, line);
-        float weatherTemperature = root["main"]["temp"];
-        int weatherPressure = root["main"]["pressure"];
-        int weatherHumidity = root["main"]["humidity"];
-        const char* weatherOveral = root["weather"][0]["main"];
-        const char* weatherDescription = root["weather"][0]["description"];
-        const char* weatherIcon = root["weather"][0]["icon"];
-        long timeOffset = root["timezone"];
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+        if (httpCode == HTTP_CODE_OK) {
+          String payload = wifiClientWeather.getString();
+          Serial.println(payload);
 
-        weather.temperature = weatherTemperature;
-        weather.pressure = weatherPressure;
-        weather.humidity = weatherHumidity;
-        weather.timeOffset = timeOffset;
-        strncpy(weather.description, weatherDescription, CHAR_LEN);
-        strncpy(weather.overal, weatherOveral, CHAR_LEN);
-        strncpy(weather.icon, weatherIcon, CHAR_LEN);
-        weather.updateTime = now();
-        Serial.println("Weather Updated");
-        weatherUpdated = true;
-        strncpy(statusMessage, "Weather updated", CHAR_LEN);
-        statusMessageUpdated = true;
-        timeClient.setTimeOffset(timeOffset); 
+          DynamicJsonDocument root(5000);
+          auto deseraliseError = deserializeJson(root, payload);
+          float weatherTemperature = root["data"][0]["temp"];
+          int weatherPressure = root["data"][0]["pres"];
+          const char* weatherDescription = root["data"][0]["weather"]["description"];
+          const char* weatherIcon = root["data"][0]["weather"]["icon"];
+
+          weather.temperature = weatherTemperature;
+          weather.pressure = weatherPressure;
+          if (weatherDescription != 0) {
+            strncpy(weather.description, weatherDescription, CHAR_LEN);
+          }
+          if (weatherIcon != 0) {
+            strncpy(weather.icon, weatherIcon, CHAR_LEN);
+          }
+
+          weather.updateTime = now();
+          weatherUpdated = true;
+          strncpy(statusMessage, "Weather updated", CHAR_LEN);
+          statusMessageUpdated = true;
+        }
+      } else
+      {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", wifiClientWeather.errorToString(httpCode).c_str());
       }
 
-      wifiClientWeather.flush();
-      wifiClientWeather.stop();
+      wifiClientWeather.end();
     }
-
   }
 }
 
@@ -314,6 +324,8 @@ void tft_draw_string_centre(const char* message, int leftx, int rightx, int y, i
 }
 
 void draw_temperature_icon (const char changeChar, const char* output, int x, int y) {
+
+
   switch (changeChar) {
     case CHAR_UP:
       ui.drawBmp("/temperature/inc.bmp", x, y);
@@ -339,7 +351,7 @@ void tft_output_t(void * pvParameters ) {
 #define TEMP_RIGHT 220
 #define TEMP_TOP 25
 #define TEMP_BOTTOM 163
-  
+
   //String weatherDescriptionFirstLetter;
   //String weatherDescriptionTemp;
   time_t statusChangeTime = 0;
@@ -405,7 +417,7 @@ void tft_output_t(void * pvParameters ) {
       draw_temperature_icon(readings[1].changeChar, readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 85, TEMP_TOP + 23);
     }
     if (temperature2Updated) {
-      tft.fillRect(TEMP_LEFT, (TEMP_BOTTOM - TEMP_TOP) /2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
+      tft.fillRect(TEMP_LEFT, (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
       temperature2Updated = false;
       tft_draw_string_centre(readings[2].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 70, 2);
       tft_draw_string_centre(readings[2].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 88, 6);
@@ -433,7 +445,12 @@ void tft_output_t(void * pvParameters ) {
       //weatherDescriptionTemp = weatherDescriptionFirstLetter + String(weather.description).substring(1);
       //tft.drawString(weatherDescriptionTemp, 30 , 240, 4);
       tft.drawString(weather.description, 30 , 240, 4);
-      ui.drawBmp("/owicon/" + String(weather.icon) + ".bmp", 140, 190);
+      Serial.println(String("Icon file is:") + String("/wbicons/") + String(weather.icon) + String(".bmp"));
+
+      // xxxxxxxxxxxxxxxx temp icon for testing
+
+      ui.drawBmp("/test/c01d50.bmp", 140, 190);
+      //ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", 140, 190);
     }
   }
 }
