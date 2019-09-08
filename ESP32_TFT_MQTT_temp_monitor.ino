@@ -1,5 +1,4 @@
 /*
-
   NOTE - Error in the ESP32 header file "client.h". Need to edit and comment out the rows
   virtual int connect(IPAddress ip, uint16_t port, int timeout) =0;
   virtual int connect(const char *host, uint16_t port, int timeout) =0;
@@ -21,26 +20,9 @@
   T_DIN  / TFT_MOSI
   T_CLK / SCLK
 
-  Order of PIN on TFT         Ordered in one side of ESP32
-
-  VCC                         VCC
-  GND                         GND
-  CS                          15
-  Reset                       4
-  D/C                         2
-  MOSI                        5
-  SCK                         18
-  LED                         19
-  MISO                        21
-  T_CLK (paired with SCLK)    xx
-  T_CS                        22
-  T_DIN (paired with MOSI)    xx
-  T_DO  (paired with MISO)    xx
-
-  Touch caib settings
+   Touch caib settings
   uint16_t calData[5] = { 307, 3372, 446, 3129, 1 };
   tft.setTouch(calData);
-
 
 */
 
@@ -99,13 +81,19 @@ struct Weather {
   time_t updateTime;
 };
 
-struct Forecast {
+struct ForecastDays {
   time_t dateTime;
   float maxTemp;
   float minTemp;
   char description[CHAR_LEN];
   char icon[CHAR_LEN];
   float moonPhase;
+};
+
+
+struct ForecastHours {
+  char localTime[CHAR_LEN];
+  char icon[CHAR_LEN];
 };
 
 
@@ -136,8 +124,10 @@ struct Forecast {
 #define MAX_NO_MESSAGE_SEC 1800LL        // Time before CHAR_NO_MESSAGE is set in seconds (long) 
 #define TIME_RETRIES 100                 // Number of time to retry getting the time during setup
 #define WEATHER_UPDATE_INTERVAL 600      // Interval between weather updates
-#define FORECAST_UPDATE_INTERVAL 1800     // Interval between forecast updates
-#define FORECAST_DAYS 5                  // Number of day's forecast to request
+#define FORECAST_DAYS_UPDATE_INTERVAL 3600     // Interval between days forecast updates
+#define FORECAST_HOURS_UPDATE_INTERVAL 1800     // Interval between days forecast updates
+#define FORECAST_DAYS 16                  // Number of day's forecast to request
+#define FORECAST_HOURS 16                  // Number of hours's forecast to request
 #define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
 #define LED_BRIGHT 255
 #define LED_DIM 20
@@ -147,22 +137,27 @@ struct Forecast {
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
 Weather weather = {0.0, 0, 0.0, "", "", "", 0, 0};
-Forecast forecast[FORECAST_DAYS];
-time_t forecastUpdateTime = 0;
+ForecastDays forecastDays[FORECAST_DAYS];
+ForecastHours forecastHours[FORECAST_HOURS];
+time_t forecastDaysUpdateTime = 0;
+time_t forecastHoursUpdateTime = 0;
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
-bool temperature0Updated = true;
-bool temperature1Updated = true;
-bool temperature2Updated = true;
-bool temperature3Updated = true;
-
+bool temperatureUpdated[4] = {true, true, true, true};
+bool showHours = true;
 bool weatherUpdated = false;
+bool forecastDaysUpdated = false;
+bool forecastHoursUpdated = false;
+
 
 TftValues tftValues;
 
 WiFiClientSecure wifiClient;
-HTTPClient httpClientWeather;
 MqttClient mqttClient(wifiClient);
+
+HTTPClient httpClientWeather;
+HTTPClient httpClientInsta;
+
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 TFT_eSPI tft = TFT_eSPI();
@@ -178,7 +173,7 @@ void setup() {
 
   Serial.begin(115200);  // Default speed of esp32
   SPIFFS.begin();
-
+ Serial.println("Size of char is: " + String(sizeof(char)) + " Size of unit_8 is: " + String(sizeof(uint8)));
   pinMode(LED_PIN, OUTPUT);
   xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   network_connect();
@@ -186,6 +181,9 @@ void setup() {
 
   xTaskCreatePinnedToCore( get_weather_t, "Get Weather", 8192 , NULL, 3, NULL, 0 );
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
+  xTaskCreatePinnedToCore( get_insta_stats_t, "Insta", 8192 , NULL, 3, NULL, 0 );
+
+
 }
 
 
@@ -199,7 +197,6 @@ void get_weather_t(void * pvParameters ) {
   String requestUrl;
 
 
-  // https://api.weatherbit.io/v2.0/current?city=munich&key=c8b9c930deae44c1990332a5297982c5
 
   while (true) {
     delay(2000);
@@ -225,7 +222,6 @@ void get_weather_t(void * pvParameters ) {
           if (weatherIcon != 0) {
             strncpy(weather.icon, weatherIcon, CHAR_LEN);
           }
-
           weather.updateTime = now();
           weatherUpdated = true;
           strncpy(statusMessage, "Weather updated", CHAR_LEN);
@@ -237,59 +233,129 @@ void get_weather_t(void * pvParameters ) {
       }
     }
 
-    if (now() - forecastUpdateTime > FORECAST_UPDATE_INTERVAL) {
+    if (now() - forecastDaysUpdateTime > FORECAST_DAYS_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/daily?city=" + String(LOCATION) + +"&days=" + String(FORECAST_DAYS) + "&key=" + String(apiKey));
       int httpCode = httpClientWeather.GET();
       if (httpCode > 0) {
         if (httpCode == HTTP_CODE_OK) {
           String payload = httpClientWeather.getString();
 
-          DynamicJsonDocument root(10000);
+          DynamicJsonDocument root(20000);
           auto deseraliseError = deserializeJson(root, payload);
           for (int i = 0; i < FORECAST_DAYS; i++) {
-
-
-            struct Forecast {
-              time_t dateTime;
-              float maxTemp;
-              float minTemp;
-              char description[CHAR_LEN];
-              char icon[CHAR_LEN];
-              float moonPhase;
-            };
 
             time_t forecastTime = root["data"][i]["ts"];
             float forecastMaxTemp = root["data"][i]["max_temp"];
             float forecastMinTemp = root["data"][i]["min_temp"];
-            float forecastMoon = root["data"][i]["weather"]["moon_phase"];
+            float forecastMoon = root["data"][i]["moon_phase"];
             const char* forecastDescription = root["data"][i]["weather"]["description"];
             const char* forecastIcon = root["data"][i]["weather"]["icon"];
 
-            forecast[i].dateTime = forecastTime;
-            forecast[i].maxTemp = forecastMaxTemp;
-            forecast[i].minTemp = forecastMinTemp;
-            forecast[i].moonPhase = forecastMoon;
+            forecastDays[i].dateTime = forecastTime;
+            forecastDays[i].maxTemp = forecastMaxTemp;
+            forecastDays[i].minTemp = forecastMinTemp;
+            forecastDays[i].moonPhase = forecastMoon;
             if (forecastDescription != 0) {
-              strncpy(forecast[i].description, forecastDescription, CHAR_LEN);
+              strncpy(forecastDays[i].description, forecastDescription, CHAR_LEN);
             }
             if (forecastIcon != 0) {
-              strncpy(forecast[i].icon, forecastIcon, CHAR_LEN);
+              strncpy(forecastDays[i].icon, forecastIcon, CHAR_LEN);
             }
 
           }
-          forecastUpdateTime = now();
-          strncpy(statusMessage, "Forecast updated", CHAR_LEN);
+          forecastDaysUpdateTime = now();
+          strncpy(statusMessage, "Forecast days updated", CHAR_LEN);
           statusMessageUpdated = true;
-          weatherUpdated = true;
+          forecastDaysUpdated = true;
         }
       } else
       {
         Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
       }
-
-
-      httpClientWeather.end();
     }
+
+
+    if (now() - forecastHoursUpdateTime > FORECAST_HOURS_UPDATE_INTERVAL) {
+      httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/hourly?city=" + String(LOCATION) + +"&hours=" + String(FORECAST_HOURS) + "&key=" + String(apiKey));
+      int httpCode = httpClientWeather.GET();
+      if (httpCode > 0) {
+        if (httpCode == HTTP_CODE_OK) {
+          String payload = httpClientWeather.getString();
+
+          DynamicJsonDocument root(20000);
+          auto deseraliseError = deserializeJson(root, payload);
+          for (int i = 0; i < FORECAST_HOURS; i++) {
+
+
+            const char* localTime = root["data"][i]["timestamp_local"];
+            const char* forecastIcon = root["data"][i]["weather"]["icon"];
+            if (forecastIcon != 0) {
+              strncpy(forecastHours[i].icon, forecastIcon, CHAR_LEN);
+            }
+            if (localTime != 0) {
+              if (strlen(localTime) > 12) {
+                strncpy(forecastHours[i].localTime, &localTime[11], CHAR_LEN);
+                forecastHours[i].localTime[5] = 0;
+              }
+            }
+          }
+          forecastHoursUpdateTime = now();
+          strncpy(statusMessage, "Hourly forecast updated", CHAR_LEN);
+          statusMessageUpdated = true;
+          forecastHoursUpdated = true;
+        }
+      } else
+      {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
+      }
+    }
+    httpClientWeather.end();
+  }
+}
+
+void get_insta_stats_t(void * pvParameters ) {
+  Serial.println("About to create wificlient object");
+  WiFiClientSecure instaClient;
+  Serial.println("setting ca");
+  //instaClient.setCACert(insta_root_ca);
+  //instaClient.setCertificate(insta_ca);
+
+  while (true) {
+    delay(2000);
+    httpClientInsta.begin(instaClient, "https://www.instagram.com/github/");
+    int httpCode = httpClientInsta.GET();
+    Serial.println("Ret code is: " + String(httpCode) + "Avail: " + String(instaClient.available()));
+
+    if (httpCode > 0) {
+      if (httpCode == HTTP_CODE_OK) {
+        Serial.println("About to start read loop");
+
+        int numChars = instaClient.available();
+        uint8_t *retString;
+        retString = (uint8_t*) malloc(numChars * (sizeof(uint8_t)+1));
+        instaClient.read(retString, numChars);
+        retString[numChars]=0;
+        Serial.println("End read");
+        //for (int i = 0; i < numChars; i++) {
+          //Serial.write((char*) retString + i);
+       // }
+        Serial.println("about to search for substring");
+        char* locFollow;
+        locFollow = strstr((char*)retString,"meta content");
+        Serial.println("loc is: ");
+        Serial.println("Size of char is: " + String(sizeof(char)) + " Size of unit_8 is: " + String(sizeof(uint8)));
+        //Serial.println("location found at: " + String(locFollow));
+
+
+      }
+    }
+    else
+    {
+      Serial.printf("[HTTP] GET... failed, error: % s\n", httpClientInsta.errorToString(httpCode).c_str());
+    }
+
+    httpClientInsta.end();
+    delay(20000);
   }
 }
 
@@ -301,11 +367,19 @@ void network_connect() {
   strncat(statusMessage, WIFI_SSID, CHAR_LEN);
   statusMessageUpdated = true;
 
-  while (WiFi.begin(WIFI_SSID, WIFI_PASSWORD) != WL_CONNECTED) {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(2000);
+  }
+
+  /*while (WiFi.begin(WIFI_SSID, WIFI_PASSWORD) != WL_CONNECTED) {
     Serial.print(".");
 
-    delay(500);
-  }
+    delay(2000);
+    }*/
+
   strncpy(statusMessage, "Connected to ", CHAR_LEN);
   strncat(statusMessage, WIFI_SSID, CHAR_LEN);
   statusMessageUpdated = true;
@@ -324,9 +398,9 @@ void time_init() {
   setTime(timeClient.getEpochTime());
 
 
-  Serial.println(F("Epoch time is: "));
+  Serial.println(F("Epoch time is : "));
   Serial.println(timeClient.getEpochTime());
-  Serial.print(F("Time is: "));
+  Serial.print(F("Time is : "));
   Serial.println(timeClient.getFormattedTime());
 }
 
@@ -334,7 +408,7 @@ void mqtt_connect() {
 
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASSWORD);
   Serial.println();
-  Serial.print("Attempting to connect to the MQTT broker: ");
+  Serial.print("Attempting to connect to the MQTT broker : ");
   Serial.println(MQTT_SERVER);
 
   strncpy(statusMessage, "Connecting to ", CHAR_LEN);
@@ -401,10 +475,23 @@ void tft_output_t(void * pvParameters ) {
 #define TEMP_TOP 25
 #define TEMP_BOTTOM 163
 
-  //String weatherDescriptionFirstLetter;
-  //String weatherDescriptionTemp;
+  struct TempZone {
+    int x;
+    int y;
+    int xSize;
+    int ySize;
+  };
+
+  TempZone tempZone[4] = {\
+    {TEMP_LEFT, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2},
+    {(TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2},
+    {TEMP_LEFT, (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2},
+    {(TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2}
+  };
+
   time_t statusChangeTime = 0;
   bool statusMessageDisplayed = false;
+
 
   tft.init();
   analogWrite(LED_PIN, LED_BRIGHT);
@@ -414,7 +501,7 @@ void tft_output_t(void * pvParameters ) {
   tft.fillScreen(TFT_BLACK);
 
   tftValues.on = true;
-  // Set up the tittle message box
+
   tft.fillRect(0, 0, 240, 20, TFT_GREEN);
   tft.setTextColor(TFT_BLACK, TFT_GREEN);
   tft_draw_string_centre(" The Klauss-o-meter V1.0", 0, 240, 3, 2);
@@ -452,54 +539,59 @@ void tft_output_t(void * pvParameters ) {
 
     // Update rooms
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    if (temperature0Updated) {
-      temperature0Updated = false;
-      tft.fillRect(TEMP_LEFT, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
-      tft_draw_string_centre(readings[0].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 5, 2);
-      tft_draw_string_centre(readings[0].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 23, 6);
-      draw_temperature_icon(readings[0].changeChar, readings[0].output, TEMP_LEFT + 85, TEMP_TOP + 23);
-    }
-    if (temperature1Updated) {
-      temperature1Updated = false;
-      tft.fillRect((TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
-      tft_draw_string_centre(readings[1].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 5, 2);
-      tft_draw_string_centre(readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2,  TEMP_RIGHT, TEMP_TOP + 23, 6);
-      draw_temperature_icon(readings[1].changeChar, readings[1].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 85, TEMP_TOP + 23);
-    }
-    if (temperature2Updated) {
-      tft.fillRect(TEMP_LEFT, (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
-      temperature2Updated = false;
-      tft_draw_string_centre(readings[2].description, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 70, 2);
-      tft_draw_string_centre(readings[2].output, TEMP_LEFT, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP + 88, 6);
-      draw_temperature_icon(readings[2].changeChar, readings[2].output, TEMP_LEFT + 85, TEMP_TOP + 88);
-    }
-    if (temperature3Updated) {
-      temperature3Updated = false;
-      tft.fillRect((TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP, (TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2, TFT_BLACK);
-      tft_draw_string_centre(readings[3].description, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 70, 2);
-      tft_draw_string_centre(readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_RIGHT, TEMP_TOP + 88, 6);
-      draw_temperature_icon(readings[3].changeChar, readings[3].output, (TEMP_RIGHT - TEMP_LEFT) / 2 + 85, TEMP_TOP + 88);
+    for (int i = 0; i < 4; i++) {
+      if (temperatureUpdated[i]) {
+        temperatureUpdated[i] = false;
+        tft.fillRect(tempZone[i].x, tempZone[i].y, tempZone[i].xSize, tempZone[i].ySize, TFT_BLACK);
+        tft_draw_string_centre(readings[i].description, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 5, 2);
+        tft_draw_string_centre(readings[i].output, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 23, 6);
+        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 85, tempZone[i].y + 23);
+      }
     }
 
 
     if (weatherUpdated) {
       weatherUpdated = false;
-      tft.fillRect(21, 176, 198, 113, TFT_BLACK);
+      tft.fillRect(0, 176, 220, 53, TFT_BLACK); // to 229
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
       String weatherTemp = String(weather.temperature, 1);
       tft.drawString(weatherTemp, 30 , 190, 6);
       weather.description[0] = toupper(weather.description[0]);
       //tft.drawString(weather.description, 30 , 240, 4);
-      ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", 140, 190);
-      tft_draw_string_centre(dayShortStr(weekday(forecast[2].dateTime)), 0, 240 / 3, 230, 2);
-      tft_draw_string_centre(dayShortStr(weekday(forecast[3].dateTime)), 240 / 3, 2 * 240 / 3, 230, 2);
-      tft_draw_string_centre(dayShortStr(weekday(forecast[4].dateTime)), 2 * 240 / 3, 240, 230, 2);
-      ui.drawBmp("/wbicons/" + String(forecast[2].icon) + ".bmp", (240 / 6) - 50 / 2, 250);
-      ui.drawBmp("/wbicons/" + String(forecast[3].icon) + ".bmp", (3 * 240 / 6) - 50 / 2, 250);
-      ui.drawBmp("/wbicons/" + String(forecast[4].icon) + ".bmp", (5 * 240 / 6) - 50 / 2, 250);
-
+      ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", 140, 180);
     }
 
+    if (forecastDaysUpdated && !showHours) {
+      forecastDaysUpdated = false;
+      tft.fillRect(0, 230, 220, 69, TFT_BLACK); //to 289
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      tft_draw_string_centre(dayShortStr(weekday(forecastDays[2].dateTime)), 0, 240 / 3, 235, 2);
+      tft_draw_string_centre(dayShortStr(weekday(forecastDays[3].dateTime)), 240 / 3, 2 * 240 / 3, 235, 2);
+      tft_draw_string_centre(dayShortStr(weekday(forecastDays[4].dateTime)), 2 * 240 / 3, 240, 235, 2);
+      ui.drawBmp("/wbicons/" + String(forecastDays[2].icon) + ".bmp", (240 / 6) - 50 / 2, 250);
+      ui.drawBmp("/wbicons/" + String(forecastDays[3].icon) + ".bmp", (3 * 240 / 6) - 50 / 2, 250);
+      ui.drawBmp("/wbicons/" + String(forecastDays[4].icon) + ".bmp", (5 * 240 / 6) - 50 / 2, 250);
+    }
+
+    if (forecastHoursUpdated && showHours) {
+      forecastHoursUpdated = false;
+      tft.fillRect(0, 230, 220, 69, TFT_BLACK); //to 289
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      for (int i = 0; i < 4; i++) {
+        tft_draw_string_centre(forecastHours[i].localTime, i * 240 / 4, (i + 1) * 240 / 4, 235, 2);
+        ui.drawBmp("/wbicons/" + String(forecastHours[i].icon) + ".bmp", i * 240 / 4, 250);
+
+      }
+
+      /*
+        tft_draw_string_centre(forecastHours[1].localTime, 0, 240 / 3, 235, 2);
+        tft_draw_string_centre(forecastHours[2].localTime, 240 / 3, 2 * 240 / 3, 235, 2);
+        tft_draw_string_centre(forecastHours[3].localTime, 2 * 240 / 3, 240, 235, 2);
+        ui.drawBmp("/wbicons/" + String(forecastHours[1].icon) + ".bmp", (240 / 6) - 50 / 2, 250);
+        ui.drawBmp("/wbicons/" + String(forecastHours[2].icon) + ".bmp", (3 * 240 / 6) - 50 / 2, 250);
+        ui.drawBmp("/wbicons/" + String(forecastHours[3].icon) + ".bmp", (5 * 240 / 6) - 50 / 2, 250);
+      */
+    }
   }
 }
 
@@ -548,23 +640,7 @@ void update_temperature(char* recMessage, int index) {
 
   readings[index].readingIndex++;
   readings[index].lastMessageTime = millis();
-  switch (index) {
-    case 0:
-      temperature0Updated = true;
-      break;
-    case 1:
-      temperature1Updated = true;
-      break;
-    case 2:
-      temperature2Updated = true;
-      break;
-    case 3:
-      temperature3Updated = true;
-      break;
-  }
-
-
-
+  temperatureUpdated[index] = true;
   strncpy(statusMessage, "Update received for ", CHAR_LEN);
   strncat(statusMessage, readings[index].description , CHAR_LEN);
   statusMessageUpdated = true;
@@ -658,6 +734,7 @@ void loop() {
   for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
     if ((millis() > readings[i].lastMessageTime + (MAX_NO_MESSAGE_SEC * 1000)) && (readings[i].output != NO_READING)) {
       readings[i].changeChar = CHAR_NO_MESSAGE;
+      temperatureUpdated[i] = true;
     }
   }
 
