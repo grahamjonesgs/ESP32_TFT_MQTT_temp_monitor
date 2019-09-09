@@ -129,9 +129,12 @@ struct ForecastHours {
 #define FORECAST_DAYS 16                  // Number of day's forecast to request
 #define FORECAST_HOURS 16                  // Number of hours's forecast to request
 #define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
+#define MAX_WIFI_RETRIES 5
 #define LED_BRIGHT 255
 #define LED_DIM 20
 #define LED_PIN 4
+#define TOUCH_CALIBRATION { 330, 3303, 450, 3116, 1 }
+
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
@@ -148,7 +151,6 @@ bool showHours = true;
 bool weatherUpdated = false;
 bool forecastDaysUpdated = false;
 bool forecastHoursUpdated = false;
-
 
 TftValues tftValues;
 
@@ -173,7 +175,6 @@ void setup() {
 
   Serial.begin(115200);  // Default speed of esp32
   SPIFFS.begin();
- Serial.println("Size of char is: " + String(sizeof(char)) + " Size of unit_8 is: " + String(sizeof(uint8)));
   pinMode(LED_PIN, OUTPUT);
   xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   network_connect();
@@ -181,11 +182,34 @@ void setup() {
 
   xTaskCreatePinnedToCore( get_weather_t, "Get Weather", 8192 , NULL, 3, NULL, 0 );
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
-  xTaskCreatePinnedToCore( get_insta_stats_t, "Insta", 8192 , NULL, 3, NULL, 0 );
-
+  xTaskCreatePinnedToCore( check_touch_t, "touch", 8192 , NULL, 0, NULL, 0 );
 
 }
 
+void check_touch_t (void * pvParameters) {
+
+  uint16_t calData[5] = TOUCH_CALIBRATION;
+  uint16_t x = 0, y = 0;
+  boolean pressed;
+
+  tft.setTouch(calData);
+
+  while (true) {
+
+    pressed = tft.getTouch(&x, &y);
+    if (pressed) {
+      strncpy(statusMessage, "Press Detected", CHAR_LEN);
+      statusMessageUpdated = true;
+      Serial.printf("Press seen at x:%i, y:%i", x, y);
+    }
+    delay(100);
+
+  }
+
+
+
+
+}
 
 void get_weather_t(void * pvParameters ) {
 
@@ -250,7 +274,6 @@ void get_weather_t(void * pvParameters ) {
             float forecastMoon = root["data"][i]["moon_phase"];
             const char* forecastDescription = root["data"][i]["weather"]["description"];
             const char* forecastIcon = root["data"][i]["weather"]["icon"];
-
             forecastDays[i].dateTime = forecastTime;
             forecastDays[i].maxTemp = forecastMaxTemp;
             forecastDays[i].minTemp = forecastMinTemp;
@@ -313,54 +336,10 @@ void get_weather_t(void * pvParameters ) {
   }
 }
 
-void get_insta_stats_t(void * pvParameters ) {
-  Serial.println("About to create wificlient object");
-  WiFiClientSecure instaClient;
-  Serial.println("setting ca");
-  //instaClient.setCACert(insta_root_ca);
-  //instaClient.setCertificate(insta_ca);
-
-  while (true) {
-    delay(2000);
-    httpClientInsta.begin(instaClient, "https://www.instagram.com/github/");
-    int httpCode = httpClientInsta.GET();
-    Serial.println("Ret code is: " + String(httpCode) + "Avail: " + String(instaClient.available()));
-
-    if (httpCode > 0) {
-      if (httpCode == HTTP_CODE_OK) {
-        Serial.println("About to start read loop");
-
-        int numChars = instaClient.available();
-        uint8_t *retString;
-        retString = (uint8_t*) malloc(numChars * (sizeof(uint8_t)+1));
-        instaClient.read(retString, numChars);
-        retString[numChars]=0;
-        Serial.println("End read");
-        //for (int i = 0; i < numChars; i++) {
-          //Serial.write((char*) retString + i);
-       // }
-        Serial.println("about to search for substring");
-        char* locFollow;
-        locFollow = strstr((char*)retString,"meta content");
-        Serial.println("loc is: ");
-        Serial.println("Size of char is: " + String(sizeof(char)) + " Size of unit_8 is: " + String(sizeof(uint8)));
-        //Serial.println("location found at: " + String(locFollow));
-
-
-      }
-    }
-    else
-    {
-      Serial.printf("[HTTP] GET... failed, error: % s\n", httpClientInsta.errorToString(httpCode).c_str());
-    }
-
-    httpClientInsta.end();
-    delay(20000);
-  }
-}
 
 void network_connect() {
 
+  int retryLoops = 0;
   Serial.print("Connect to WPA SSID: ");
   Serial.println(WIFI_SSID);
   strncpy(statusMessage, "Waiting for ", CHAR_LEN);
@@ -369,16 +348,22 @@ void network_connect() {
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(2000);
+  while (int retcode = WiFi.status() != WL_CONNECTED) {
+    delay(5000);
+    Serial.println("WiFi return code is: " + String(retcode));
+    strncpy(statusMessage, "Waiting for ", CHAR_LEN);
+    strncat(statusMessage, WIFI_SSID, CHAR_LEN);
+    statusMessageUpdated = true;
+
+    retryLoops++;
+    if (retryLoops > MAX_WIFI_RETRIES) {
+      strncpy(statusMessage, "Error with WiFi, reboot ", CHAR_LEN);
+      statusMessageUpdated = true;
+      delay(2000);
+      ESP.restart();
+    }
+
   }
-
-  /*while (WiFi.begin(WIFI_SSID, WIFI_PASSWORD) != WL_CONNECTED) {
-    Serial.print(".");
-
-    delay(2000);
-    }*/
 
   strncpy(statusMessage, "Connected to ", CHAR_LEN);
   strncat(statusMessage, WIFI_SSID, CHAR_LEN);
