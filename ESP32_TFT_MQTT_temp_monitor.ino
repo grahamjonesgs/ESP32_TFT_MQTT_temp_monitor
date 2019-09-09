@@ -96,8 +96,6 @@ struct ForecastHours {
   char icon[CHAR_LEN];
 };
 
-
-
 // Array and TFT string settings
 #define NO_READING "--"            // Screen output before any mesurement is received
 #define DESC_ONOFF "ONO"
@@ -129,13 +127,15 @@ struct ForecastHours {
 #define FORECAST_DAYS 16                  // Number of day's forecast to request
 #define FORECAST_HOURS 16                  // Number of hours's forecast to request
 #define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
-#define MAX_WIFI_RETRIES 5
+#define MAX_WIFI_RETRIES 3
 #define LED_BRIGHT 255
 #define LED_DIM 20
 #define LED_PIN 4
 #define TOUCH_CALIBRATION { 330, 3303, 450, 3116, 1 }
-//#define PORTRATE
 
+// Screen types
+#define MAIN_SCREEN 0
+#define FORECAST_SCREEN 1
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
@@ -177,13 +177,13 @@ void setup() {
   Serial.begin(115200);  // Default speed of esp32
   SPIFFS.begin();
   pinMode(LED_PIN, OUTPUT);
-  xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
+  xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 0, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   network_connect();
   time_init();
 
   xTaskCreatePinnedToCore( get_weather_t, "Get Weather", 8192 , NULL, 3, NULL, 0 );
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
-  //xTaskCreatePinnedToCore( check_touch_t, "touch", 8192 , NULL, 0, NULL, 0 );
+  xTaskCreatePinnedToCore( check_touch_t, "touch", 8192 , NULL, 0, NULL, 1 );
 
 }
 
@@ -201,9 +201,9 @@ void check_touch_t (void * pvParameters) {
     if (pressed) {
       strncpy(statusMessage, "Press Detected", CHAR_LEN);
       statusMessageUpdated = true;
-      Serial.printf("Press seen at x:%i, y:%i", x, y);
+      Serial.printf("Press seen at x:%i, y:%i\n", x, y);
     }
-    delay(100);
+    delay(200);
 
   }
 
@@ -432,7 +432,6 @@ void tft_draw_string_centre(const char* message, int leftx, int rightx, int y, i
 
 void draw_temperature_icon (const char changeChar, const char* output, int x, int y) {
 
-
   switch (changeChar) {
     case CHAR_UP:
       ui.drawBmp("/temperature/inc.bmp", x, y);
@@ -452,7 +451,6 @@ void draw_temperature_icon (const char changeChar, const char* output, int x, in
   }
 }
 
-
 void tft_output_t(void * pvParameters ) {
 
   struct TempZone {
@@ -461,114 +459,62 @@ void tft_output_t(void * pvParameters ) {
     int xSize;
     int ySize;
   };
-#ifdef PORTRATE
 
-#define TITLE_LEFT 0
-#define TITLE_RIGHT 240
-#define TITLE_TOP 0
-#define TITLE_BOTTOM 20
+  int TITLE_LEFT = 0;
+  int TITLE_RIGHT = 320;
+  int TITLE_TOP = 0;
+  int TITLE_BOTTOM = 15;
 
-#define TEMP_LEFT 0
-#define TEMP_RIGHT 220
-#define TEMP_TOP 25
-#define TEMP_BOTTOM 163
+  int TEMP_LEFT = 0;
+  int TEMP_RIGHT = 320;
+  int TEMP_TOP = 15;
+  int TEMP_BOTTOM = 80;
 
-#define WEATHER_LEFT 0
-#define WEATHER_RIGHT 240
-#define WEATHER_TOP 170
-#define WEATHER_BOTTOM 229
+  int WEATHER_LEFT = 0;
+  int WEATHER_RIGHT  = 320;
+  int WEATHER_TOP = 90;
+  int WEATHER_BOTTOM = 159;
 
-#define FORECAST_LEFT 0
-#define FORECAST_RIGHT 240
-#define FORECAST_TOP 230
-#define FORECAST_BOTTOM 295
+  int FORECAST_LEFT = 0;
+  int FORECAST_RIGHT = 320;
+  int FORECAST_TOP = 150;
+  int FORECAST_BOTTOM = 215;
 
-#define STATUS_LEFT 0
-#define STATUS_RIGHT 240
-#define STATUS_TOP 296
-#define STATUS_BOTTOM 320
+  int STATUS_LEFT = 0;
+  int STATUS_RIGHT = 320;
+  int STATUS_TOP = 216;
+  int STATUS_BOTTOM = 240;
 
-#define DISPLAY_DAYS 4
-#define DISPLAY_HOURS 4
-
-
-  TempZone tempZone[4] = {\
-    {TEMP_LEFT,                    TEMP_TOP,                                  (TEMP_RIGHT - TEMP_LEFT) / 2,  (TEMP_BOTTOM - TEMP_TOP) / 2},
-    {(TEMP_RIGHT - TEMP_LEFT) / 2, TEMP_TOP,                                  (TEMP_RIGHT - TEMP_LEFT) / 2,  (TEMP_BOTTOM - TEMP_TOP) / 2},
-    {TEMP_LEFT,                    (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP,   (TEMP_RIGHT - TEMP_LEFT) / 2 , (TEMP_BOTTOM - TEMP_TOP) / 2},
-    {(TEMP_RIGHT - TEMP_LEFT) / 2, (TEMP_BOTTOM - TEMP_TOP) / 2 + TEMP_TOP,   (TEMP_RIGHT - TEMP_LEFT) / 2,  (TEMP_BOTTOM - TEMP_TOP) / 2}
-  };
-
-#else
-#define TITLE_LEFT 0
-#define TITLE_RIGHT 320
-#define TITLE_TOP 0
-#define TITLE_BOTTOM 13
-
-#define TEMP_LEFT 0
-#define TEMP_RIGHT 320
-#define TEMP_TOP 15
-#define TEMP_BOTTOM 80
-
-#define WEATHER_LEFT 0
-#define WEATHER_RIGHT 320
-#define WEATHER_TOP 90
-#define WEATHER_BOTTOM 159
-
-#define FORECAST_LEFT 0
-#define FORECAST_RIGHT 320
-#define FORECAST_TOP 150
-#define FORECAST_BOTTOM 215
-
-#define STATUS_LEFT 0
-#define STATUS_RIGHT 320
-#define STATUS_TOP 216
-#define STATUS_BOTTOM 240
-
-#define DISPLAY_DAYS 5
-#define DISPLAY_HOURS 5
-
+  int DISPLAY_DAYS = 5;
+  int DISPLAY_HOURS = 5;
 
   TempZone tempZone[4] = {\
     {TEMP_LEFT,                                  TEMP_TOP,     (TEMP_RIGHT - TEMP_LEFT) / 4,  TEMP_BOTTOM - TEMP_TOP},
     {TEMP_LEFT + (TEMP_RIGHT - TEMP_LEFT) / 4,   TEMP_TOP,     (TEMP_RIGHT - TEMP_LEFT) / 4,  TEMP_BOTTOM - TEMP_TOP},
-    {TEMP_LEFT + 2*(TEMP_RIGHT - TEMP_LEFT) / 4, TEMP_TOP,     (TEMP_RIGHT - TEMP_LEFT) / 4,  TEMP_BOTTOM - TEMP_TOP},
-    {TEMP_LEFT + 3*(TEMP_RIGHT - TEMP_LEFT) / 4, TEMP_TOP,     (TEMP_RIGHT - TEMP_LEFT) / 4,  TEMP_BOTTOM - TEMP_TOP}
-
+    {TEMP_LEFT + 2 * (TEMP_RIGHT - TEMP_LEFT) / 4, TEMP_TOP,     (TEMP_RIGHT - TEMP_LEFT) / 4,  TEMP_BOTTOM - TEMP_TOP},
+    {TEMP_LEFT + 3 * (TEMP_RIGHT - TEMP_LEFT) / 4, TEMP_TOP,     (TEMP_RIGHT - TEMP_LEFT) / 4,  TEMP_BOTTOM - TEMP_TOP}
   };
-#endif
 
   time_t statusChangeTime = 0;
   bool statusMessageDisplayed = false;
-
   tft.init();
+  tft.fillScreen(TFT_BLACK);
   analogWrite(LED_PIN, LED_BRIGHT);
-#ifdef PORTRATE
-  tft.setRotation(0);
-  ui.drawBmp("/images/beach.bmp", 0, 0);
-  delay(5000);
-  tft.fillScreen(TFT_BLACK);
-#else
-  tft.setRotation(0);
-  ui.drawBmp("/images/logoh.bmp", 0, 0);
-  delay(5000);
-  tft.fillScreen(TFT_BLACK);
+  //tft.setRotation(0);
+  //ui.drawBmp("/images/logoh.bmp", 0, 0);
+  //delay(5000);
   tft.setRotation(3);
-#endif
-
 
   tftValues.on = true;
 
-
   tft.fillRect(TITLE_LEFT, TITLE_TOP, TITLE_RIGHT - TITLE_LEFT, TITLE_BOTTOM - TITLE_TOP, TFT_GREEN);
   tft.setTextColor(TFT_BLACK, TFT_GREEN);
-  tft_draw_string_centre(" The Klauss-o-meter V1.0", TITLE_LEFT, TITLE_RIGHT, TITLE_TOP, 2);
+  tft_draw_string_centre(" The Klauss-o-meter V2.0", TITLE_LEFT, TITLE_RIGHT, TITLE_TOP, 2);
 
   // Set up the weather message box
   tft.drawLine(WEATHER_LEFT, WEATHER_TOP, WEATHER_RIGHT, WEATHER_TOP, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft_draw_string_centre(" Weather ", WEATHER_LEFT, WEATHER_RIGHT, WEATHER_TOP - 7 , 2);
-
 
   while (true) {
     delay(100);
@@ -594,7 +540,7 @@ void tft_output_t(void * pvParameters ) {
       statusMessageDisplayed = true;
       statusChangeTime = now();
     }
-
+    yield();
     // Update rooms
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     for (int i = 0; i < 4; i++) {
@@ -603,21 +549,22 @@ void tft_output_t(void * pvParameters ) {
         tft.fillRect(tempZone[i].x, tempZone[i].y, tempZone[i].xSize, tempZone[i].ySize, TFT_BLACK);
         tft_draw_string_centre(readings[i].description, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 5, 2);
         tft_draw_string_centre(readings[i].output, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 23, 6);
-        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 85, tempZone[i].y + 23);
+        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 70, tempZone[i].y + 23);
       }
     }
 
-
+yield();
     if (weatherUpdated) {
       weatherUpdated = false;
       tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 1, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_TOP - WEATHER_BOTTOM, TFT_BLACK); // to 229
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
       String weatherTemp = String(weather.temperature, 1);
-      tft.drawString(weatherTemp, WEATHER_LEFT + 30 , WEATHER_TOP + 20, 6);
+      tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
       weather.description[0] = toupper(weather.description[0]);
-      ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", WEATHER_LEFT + 140, WEATHER_TOP + 10);
+      tft.drawString(weather.description, WEATHER_LEFT + 90 , WEATHER_TOP + 25 , 4);
+      //ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", WEATHER_LEFT + 140, WEATHER_TOP + 10);
     }
-
+yield();
     if (forecastDaysUpdated && !showHours) {
       forecastDaysUpdated = false;
       tft.fillRect(FORECAST_LEFT, FORECAST_TOP, FORECAST_RIGHT - FORECAST_LEFT, FORECAST_BOTTOM - FORECAST_TOP, TFT_BLACK);
@@ -627,7 +574,7 @@ void tft_output_t(void * pvParameters ) {
         ui.drawBmp("/wbicons/" + String(forecastDays[i].icon) + ".bmp", i * FORECAST_RIGHT / 4, FORECAST_TOP + 20);
       }
     }
-
+yield();
     if (forecastHoursUpdated && showHours) {
       forecastHoursUpdated = false;
       tft.fillRect(FORECAST_LEFT, FORECAST_TOP, FORECAST_RIGHT - FORECAST_LEFT, FORECAST_BOTTOM - FORECAST_TOP, TFT_BLACK);
