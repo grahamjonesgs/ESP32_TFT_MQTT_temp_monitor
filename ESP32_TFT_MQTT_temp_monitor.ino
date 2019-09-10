@@ -137,6 +137,7 @@ struct ForecastHours {
 // Screen types
 #define MAIN_SCREEN 0
 #define FORECAST_SCREEN 1
+int displayType = MAIN_SCREEN;
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
@@ -149,7 +150,6 @@ time_t forecastHoursUpdateTime = 0;
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
 bool temperatureUpdated[4] = {true, true, true, true};
-bool showHours = true;
 bool weatherUpdated = false;
 bool forecastDaysUpdated = false;
 bool forecastHoursUpdated = false;
@@ -437,7 +437,7 @@ void draw_temperature_icon (const char changeChar, const char* output, int x, in
       break;
     default:
       if (strcmp(output, NO_READING) != 0) {
-        ui.drawBmp("/temperature/same.bmp", x, y);
+        //ui.drawBmp("/temperature/same.bmp", x, y);
       }
       break;
 
@@ -503,10 +503,10 @@ void tft_output_t(void * pvParameters ) {
   tft.init();
   tft.fillScreen(TFT_BLACK);
   analogWrite(LED_PIN, LED_BRIGHT);
-  //tft.setRotation(0);
-  //ui.drawBmp("/images/logoh.bmp", 0, 0);
-  //delay(5000);
   tft.setRotation(3);
+  ui.drawJpeg("/images/logo.jpg", 0, 0);
+  delay(5000);
+  tft.fillScreen(TFT_BLACK);
 
   tftValues.on = true;
 
@@ -532,17 +532,21 @@ void tft_output_t(void * pvParameters ) {
     pressed = tft.getTouch(&x, &y);
     if (pressed && (now() - lastPressed > PRESS_DEBOUNCE)) {
       lastPressed = now();
-      if (showHours) {
-        showHours = false;
-        forecastDaysUpdated = true;
-        weatherUpdated = true;
-      }
-      else
-      {
-        showHours = true;
-        forecastHoursUpdated = true;
+      switch (displayType) {
+
+        case MAIN_SCREEN:
+          displayType = FORECAST_SCREEN;
+          forecastDaysUpdated = true;
+          weatherUpdated = true;
+          break;
+
+        case FORECAST_SCREEN:
+        default:
+          displayType = MAIN_SCREEN;
+          forecastHoursUpdated = true;
       }
     }
+
 
     // Remove old status messages
     if (statusChangeTime + STATUS_MESSAGE_TIME < now() && statusMessageDisplayed) {
@@ -574,8 +578,8 @@ void tft_output_t(void * pvParameters ) {
     }
 
     yield();
-    if (showHours) {
-      if (weatherUpdated) {
+    if (displayType == MAIN_SCREEN) {
+      if (weatherUpdated && weather.updateTime !=0) {
         weatherUpdated = false;
         tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 8, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_BOTTOM - WEATHER_TOP - 15, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -587,7 +591,7 @@ void tft_output_t(void * pvParameters ) {
       }
       yield();
 
-      if (forecastHoursUpdated) {
+      if (forecastHoursUpdated && forecastHoursUpdateTime != 0) {
         forecastHoursUpdated = false;
         tft.fillRect(HOURS_FORECAST_LEFT, HOURS_FORECAST_TOP, HOURS_FORECAST_RIGHT - HOURS_FORECAST_LEFT, HOURS_FORECAST_BOTTOM - HOURS_FORECAST_TOP, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -602,10 +606,13 @@ void tft_output_t(void * pvParameters ) {
     else
     {
 
-      if (forecastDaysUpdated) {
+      if (displayType == FORECAST_SCREEN && forecastHoursUpdateTime != 0 && forecastDaysUpdated) {
         forecastDaysUpdated = false;
         tft.fillRect(DAYS_FORECAST_LEFT, DAYS_FORECAST_TOP + 9, DAYS_FORECAST_RIGHT - DAYS_FORECAST_LEFT, DAYS_FORECAST_BOTTOM - DAYS_FORECAST_TOP - 15, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("Max", 0 , DAYS_FORECAST_TOP + 70, 2);
+        tft.drawString("Min", 0 , DAYS_FORECAST_TOP + 90, 2);
+        
         for (int i = 0; i <  DISPLAY_DAYS; i++) {
           tft_draw_string_centre(dayShortStr(weekday(forecastDays[i + 2].dateTime)), i * DAYS_FORECAST_RIGHT / 4, (i + 1) * DAYS_FORECAST_RIGHT / 4, DAYS_FORECAST_TOP + 5, 2);
           ui.drawBmp("/wbicons/" + String(forecastDays[i + 2].icon) + ".bmp", i * DAYS_FORECAST_RIGHT / 4 + 15, DAYS_FORECAST_TOP + 20);
