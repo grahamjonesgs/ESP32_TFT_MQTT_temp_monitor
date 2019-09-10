@@ -131,6 +131,7 @@ struct ForecastHours {
 #define LED_BRIGHT 255
 #define LED_DIM 20
 #define LED_PIN 4
+#define PRESS_DEBOUNCE 1
 #define TOUCH_CALIBRATION { 330, 3303, 450, 3116, 1 }
 
 // Screen types
@@ -148,7 +149,7 @@ time_t forecastHoursUpdateTime = 0;
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
 bool temperatureUpdated[4] = {true, true, true, true};
-bool showHours = true;
+bool showHours = false;
 bool weatherUpdated = false;
 bool forecastDaysUpdated = false;
 bool forecastHoursUpdated = false;
@@ -199,15 +200,11 @@ void check_touch_t (void * pvParameters) {
 
     pressed = tft.getTouch(&x, &y);
     if (pressed) {
-      strncpy(statusMessage, "Press Detected", CHAR_LEN);
-      statusMessageUpdated = true;
       Serial.printf("Press seen at x:%i, y:%i\n", x, y);
     }
     delay(200);
 
   }
-
-
 
 
 }
@@ -295,7 +292,6 @@ void get_weather_t(void * pvParameters ) {
         Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
       }
     }
-
 
     if (now() - forecastHoursUpdateTime > FORECAST_HOURS_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/hourly?city=" + String(LOCATION) + +"&hours=" + String(FORECAST_HOURS) + "&key=" + String(apiKey));
@@ -453,6 +449,11 @@ void draw_temperature_icon (const char changeChar, const char* output, int x, in
 
 void tft_output_t(void * pvParameters ) {
 
+  uint16_t calData[5] = TOUCH_CALIBRATION;
+  uint16_t x = 0, y = 0;
+  boolean pressed;
+  time_t lastPressed = 0;
+
   struct TempZone {
     int x;
     int y;
@@ -475,10 +476,15 @@ void tft_output_t(void * pvParameters ) {
   int WEATHER_TOP = 90;
   int WEATHER_BOTTOM = 159;
 
-  int FORECAST_LEFT = 0;
-  int FORECAST_RIGHT = 320;
-  int FORECAST_TOP = 150;
-  int FORECAST_BOTTOM = 215;
+  int HOURS_FORECAST_LEFT = 0;
+  int HOURS_FORECAST_RIGHT = 320;
+  int HOURS_FORECAST_TOP = 150;
+  int HOURS_FORECAST_BOTTOM = 215;
+
+  int DAYS_FORECAST_LEFT = 0;
+  int DAYS_FORECAST_RIGHT = 320;
+  int DAYS_FORECAST_TOP = 90;
+  int DAYS_FORECAST_BOTTOM = 215;
 
   int STATUS_LEFT = 0;
   int STATUS_RIGHT = 320;
@@ -526,6 +532,24 @@ void tft_output_t(void * pvParameters ) {
       analogWrite(LED_PIN, LED_DIM);
     }
 
+    pressed = tft.getTouch(&x, &y);
+    if (pressed && (now() - lastPressed > PRESS_DEBOUNCE)) {
+      lastPressed = now();
+      strncpy(statusMessage, "Press Detected", CHAR_LEN);
+      statusMessageUpdated = true;
+      Serial.printf("Press seen at x:%i, y:%i\n", x, y);
+      if (showHours) {
+        showHours = false;
+        forecastDaysUpdated = true;
+        weatherUpdated = true;
+      }
+      else
+      {
+        showHours = true;
+        forecastHoursUpdated = true;
+      }
+    }
+
     // Remove old status messages
     if (statusChangeTime + STATUS_MESSAGE_TIME < now() && statusMessageDisplayed) {
       tft.fillRect(STATUS_LEFT, STATUS_TOP, STATUS_RIGHT - STATUS_LEFT, STATUS_BOTTOM - STATUS_TOP, TFT_BLACK);
@@ -551,42 +575,55 @@ void tft_output_t(void * pvParameters ) {
         tft.drawString(readings[i].description, tempZone[i].x, tempZone[i].y + 5, 2);
         //tft_draw_string_centre(readings[i].output, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 23, 6);
         tft.drawString(readings[i].output, tempZone[i].x, tempZone[i].y + 23, 6);
-        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 60, tempZone[i].y + 28);
+        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 55, tempZone[i].y + 28);
       }
     }
 
     yield();
-    if (weatherUpdated) {
-      weatherUpdated = false;
-      tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 1, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_TOP - WEATHER_BOTTOM, TFT_BLACK); // to 229
-      tft.setTextColor(TFT_WHITE, TFT_BLACK);
-      String weatherTemp = String(weather.temperature, 1);
-      tft.drawString(weatherTemp, WEATHER_LEFT + 15 , WEATHER_TOP + 15, 6);
-      weather.description[0] = toupper(weather.description[0]);
-      tft.drawString(weather.description, WEATHER_LEFT + 115, WEATHER_TOP + 25 , 4);
-      //ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", WEATHER_LEFT + 140, WEATHER_TOP + 10);
-    }
-    yield();
-    if (forecastDaysUpdated && !showHours) {
-      forecastDaysUpdated = false;
-      tft.fillRect(FORECAST_LEFT, FORECAST_TOP, FORECAST_RIGHT - FORECAST_LEFT, FORECAST_BOTTOM - FORECAST_TOP, TFT_BLACK);
-      tft.setTextColor(TFT_WHITE, TFT_BLACK);
-      for (int i = 2; i < 2 + DISPLAY_DAYS; i++) {
-        tft_draw_string_centre(dayShortStr(weekday(forecastDays[i].dateTime)), i * FORECAST_RIGHT / 4, (i + 1) * FORECAST_RIGHT / 4, FORECAST_TOP + 5, 2);
-        ui.drawBmp("/wbicons/" + String(forecastDays[i].icon) + ".bmp", i * FORECAST_RIGHT / 4, FORECAST_TOP + 20);
+    if (showHours) {
+      if (weatherUpdated) {
+        weatherUpdated = false;
+        tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 8, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_BOTTOM - WEATHER_TOP - 15, TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        String weatherTemp = String(weather.temperature, 1);
+        tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
+        weather.description[0] = toupper(weather.description[0]);
+        tft.drawString(weather.description, WEATHER_LEFT + 105, WEATHER_TOP + 25 , 4);
+        //ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", WEATHER_LEFT + 140, WEATHER_TOP + 10);
+      }
+      yield();
+
+      if (forecastHoursUpdated) {
+        forecastHoursUpdated = false;
+        tft.fillRect(HOURS_FORECAST_LEFT, HOURS_FORECAST_TOP, HOURS_FORECAST_RIGHT - HOURS_FORECAST_LEFT, HOURS_FORECAST_BOTTOM - HOURS_FORECAST_TOP, TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        for (int i = 0; i < DISPLAY_HOURS; i++) {
+          tft_draw_string_centre(forecastHours[i].localTime, i * HOURS_FORECAST_RIGHT / DISPLAY_HOURS, (i + 1) * HOURS_FORECAST_RIGHT / DISPLAY_HOURS, HOURS_FORECAST_TOP + 5, 2);
+          ui.drawBmp("/wbicons/" + String(forecastHours[i].icon) + ".bmp", i * HOURS_FORECAST_RIGHT / DISPLAY_HOURS + 10, HOURS_FORECAST_TOP + 20);
+
+        }
       }
     }
-    yield();
-    if (forecastHoursUpdated && showHours) {
-      forecastHoursUpdated = false;
-      tft.fillRect(FORECAST_LEFT, FORECAST_TOP, FORECAST_RIGHT - FORECAST_LEFT, FORECAST_BOTTOM - FORECAST_TOP, TFT_BLACK);
-      tft.setTextColor(TFT_WHITE, TFT_BLACK);
-      for (int i = 0; i < DISPLAY_HOURS; i++) {
-        tft_draw_string_centre(forecastHours[i].localTime, i * FORECAST_RIGHT / DISPLAY_HOURS, (i + 1) * FORECAST_RIGHT / DISPLAY_HOURS, FORECAST_TOP + 5, 2);
-        ui.drawBmp("/wbicons/" + String(forecastHours[i].icon) + ".bmp", i * FORECAST_RIGHT / DISPLAY_HOURS + 10, FORECAST_TOP + 20);
 
+    else
+    {
+
+      if (forecastDaysUpdated) {
+        forecastDaysUpdated = false;
+        tft.fillRect(DAYS_FORECAST_LEFT, DAYS_FORECAST_TOP + 9, DAYS_FORECAST_RIGHT - DAYS_FORECAST_LEFT, DAYS_FORECAST_BOTTOM - DAYS_FORECAST_TOP - 15, TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        for (int i = 0; i <  DISPLAY_DAYS; i++) {
+          tft_draw_string_centre(dayShortStr(weekday(forecastDays[i + 2].dateTime)), i * DAYS_FORECAST_RIGHT / 4, (i + 1) * DAYS_FORECAST_RIGHT / 4, DAYS_FORECAST_TOP + 5, 2);
+          ui.drawBmp("/wbicons/" + String(forecastDays[i + 2].icon) + ".bmp", i * DAYS_FORECAST_RIGHT / 4 + 15, DAYS_FORECAST_TOP + 20);
+          char minTemp[CHAR_LEN];
+          char maxTemp[CHAR_LEN];
+          String(forecastDays[i + 2].maxTemp, 0).toCharArray(maxTemp, CHAR_LEN);
+          String(forecastDays[i + 2].minTemp, 0).toCharArray(minTemp, CHAR_LEN);
+          tft_draw_string_centre(maxTemp, i * DAYS_FORECAST_RIGHT / 4, (i + 1) * DAYS_FORECAST_RIGHT / 4, DAYS_FORECAST_TOP + 70, 2);
+          tft_draw_string_centre(minTemp, i * DAYS_FORECAST_RIGHT / 4, (i + 1) * DAYS_FORECAST_RIGHT / 4, DAYS_FORECAST_TOP + 90, 2);
+
+        }
       }
-
     }
   }
 }
