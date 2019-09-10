@@ -177,13 +177,13 @@ void setup() {
   Serial.begin(115200);  // Default speed of esp32
   SPIFFS.begin();
   pinMode(LED_PIN, OUTPUT);
-  xTaskCreatePinnedToCore( tft_output_t, "LCD Update", 8192 , NULL, 0, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
+  xTaskCreatePinnedToCore( tft_output_t, "TFT Update", 8192 , NULL, 10, NULL, 0 ); // Highest priorit on this cpu to avoid coms errors
   network_connect();
   time_init();
 
   xTaskCreatePinnedToCore( get_weather_t, "Get Weather", 8192 , NULL, 3, NULL, 0 );
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
-  xTaskCreatePinnedToCore( check_touch_t, "touch", 8192 , NULL, 0, NULL, 1 );
+  //xTaskCreatePinnedToCore( check_touch_t, "touch", 8192 , NULL, 0, NULL, 1 );
 
 }
 
@@ -547,24 +547,26 @@ void tft_output_t(void * pvParameters ) {
       if (temperatureUpdated[i]) {
         temperatureUpdated[i] = false;
         tft.fillRect(tempZone[i].x, tempZone[i].y, tempZone[i].xSize, tempZone[i].ySize, TFT_BLACK);
-        tft_draw_string_centre(readings[i].description, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 5, 2);
-        tft_draw_string_centre(readings[i].output, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 23, 6);
-        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 70, tempZone[i].y + 23);
+        //tft_draw_string_centre(readings[i].description, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 5, 2);
+        tft.drawString(readings[i].description, tempZone[i].x, tempZone[i].y + 5, 2);
+        //tft_draw_string_centre(readings[i].output, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 23, 6);
+        tft.drawString(readings[i].output, tempZone[i].x, tempZone[i].y + 23, 6);
+        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 60, tempZone[i].y + 28);
       }
     }
 
-yield();
+    yield();
     if (weatherUpdated) {
       weatherUpdated = false;
       tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 1, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_TOP - WEATHER_BOTTOM, TFT_BLACK); // to 229
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
       String weatherTemp = String(weather.temperature, 1);
-      tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
+      tft.drawString(weatherTemp, WEATHER_LEFT + 15 , WEATHER_TOP + 15, 6);
       weather.description[0] = toupper(weather.description[0]);
-      tft.drawString(weather.description, WEATHER_LEFT + 90 , WEATHER_TOP + 25 , 4);
+      tft.drawString(weather.description, WEATHER_LEFT + 115, WEATHER_TOP + 25 , 4);
       //ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", WEATHER_LEFT + 140, WEATHER_TOP + 10);
     }
-yield();
+    yield();
     if (forecastDaysUpdated && !showHours) {
       forecastDaysUpdated = false;
       tft.fillRect(FORECAST_LEFT, FORECAST_TOP, FORECAST_RIGHT - FORECAST_LEFT, FORECAST_BOTTOM - FORECAST_TOP, TFT_BLACK);
@@ -574,7 +576,7 @@ yield();
         ui.drawBmp("/wbicons/" + String(forecastDays[i].icon) + ".bmp", i * FORECAST_RIGHT / 4, FORECAST_TOP + 20);
       }
     }
-yield();
+    yield();
     if (forecastHoursUpdated && showHours) {
       forecastHoursUpdated = false;
       tft.fillRect(FORECAST_LEFT, FORECAST_TOP, FORECAST_RIGHT - FORECAST_LEFT, FORECAST_BOTTOM - FORECAST_TOP, TFT_BLACK);
