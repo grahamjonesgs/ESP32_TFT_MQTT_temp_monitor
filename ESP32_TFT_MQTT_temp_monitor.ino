@@ -149,7 +149,7 @@ time_t forecastHoursUpdateTime = 0;
 char statusMessage[CHAR_LEN];
 bool statusMessageUpdated = false;
 bool temperatureUpdated[4] = {true, true, true, true};
-bool showHours = false;
+bool showHours = true;
 bool weatherUpdated = false;
 bool forecastDaysUpdated = false;
 bool forecastHoursUpdated = false;
@@ -203,10 +203,7 @@ void check_touch_t (void * pvParameters) {
       Serial.printf("Press seen at x:%i, y:%i\n", x, y);
     }
     delay(200);
-
   }
-
-
 }
 
 void get_weather_t(void * pvParameters ) {
@@ -535,9 +532,6 @@ void tft_output_t(void * pvParameters ) {
     pressed = tft.getTouch(&x, &y);
     if (pressed && (now() - lastPressed > PRESS_DEBOUNCE)) {
       lastPressed = now();
-      strncpy(statusMessage, "Press Detected", CHAR_LEN);
-      statusMessageUpdated = true;
-      Serial.printf("Press seen at x:%i, y:%i\n", x, y);
       if (showHours) {
         showHours = false;
         forecastDaysUpdated = true;
