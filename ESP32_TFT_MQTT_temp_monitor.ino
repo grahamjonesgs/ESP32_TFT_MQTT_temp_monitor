@@ -608,7 +608,7 @@ void tft_output_t(void * pvParameters ) {
 
       if (displayType == FORECAST_SCREEN && forecastHoursUpdateTime != 0 && forecastDaysUpdated) {
         forecastDaysUpdated = false;
-        tft.fillRect(DAYS_FORECAST_LEFT, DAYS_FORECAST_TOP + 9, DAYS_FORECAST_RIGHT - DAYS_FORECAST_LEFT, DAYS_FORECAST_BOTTOM - DAYS_FORECAST_TOP - 15, TFT_BLACK);
+        tft.fillRect(DAYS_FORECAST_LEFT, DAYS_FORECAST_TOP + 9, DAYS_FORECAST_RIGHT - DAYS_FORECAST_LEFT, DAYS_FORECAST_BOTTOM - DAYS_FORECAST_TOP - 10, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         tft.drawString("Max", 0 , DAYS_FORECAST_TOP + 70, 2);
         tft.drawString("Min", 0 , DAYS_FORECAST_TOP + 90, 2);
