@@ -26,8 +26,6 @@
 
 */
 
-//#include <LiquidCrystal_I2C.h>
-#include <EEPROM.h>
 #include <ArduinoMqttClient.h>
 #include <analogWrite.h>
 #include <WiFi.h>
@@ -99,14 +97,11 @@ struct ForecastHours {
 // Array and TFT string settings
 #define NO_READING "--"            // Screen output before any mesurement is received
 #define DESC_ONOFF "ONO"
-#define OUTPUT_TEMPERATURE 1
-#define OUTPUT_WEATHER 2
 
 // Character settings
 #define CHAR_UP 1
 #define CHAR_DOWN 2
 #define CHAR_SAME 3
-#define CHAR_STAR 42
 #define CHAR_BLANK 32
 #define CHAR_NO_MESSAGE 33
 #define CHAR_NOT_ENOUGH_DATA 46
@@ -126,7 +121,7 @@ struct ForecastHours {
 #define FORECAST_HOURS_UPDATE_INTERVAL 1800     // Interval between days forecast updates
 #define FORECAST_DAYS 16                  // Number of day's forecast to request
 #define FORECAST_HOURS 16                  // Number of hours's forecast to request
-#define STATUS_MESSAGE_TIME 10           // Seconds an status message can be displayed
+#define STATUS_MESSAGE_TIME 5           // Seconds an status message can be displayed
 #define MAX_WIFI_RETRIES 3
 #define LED_BRIGHT 255
 #define LED_DIM 20
@@ -164,11 +159,9 @@ HTTPClient httpClientInsta;
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
-TFT_eSPI tft = TFT_eSPI();
-GfxUi ui = GfxUi(&tft); // Jpeg and bmpDraw functions TODO: pull outside of a class
 
-// Define eprom address
-#define LCD_VALUES_ADDRESS 0
+TFT_eSPI tft = TFT_eSPI();
+GfxUi ui = GfxUi(&tft);
 
 // Monitor Heap size for fragmentation
 size_t old_biggest_free_block = 0;
@@ -184,35 +177,13 @@ void setup() {
 
   xTaskCreatePinnedToCore( get_weather_t, "Get Weather", 8192 , NULL, 3, NULL, 0 );
   xTaskCreatePinnedToCore( receive_mqtt_messages_t, "mqtt", 8192 , NULL, 1, NULL, 1 );
-  //xTaskCreatePinnedToCore( check_touch_t, "touch", 8192 , NULL, 0, NULL, 1 );
 
-}
-
-void check_touch_t (void * pvParameters) {
-
-  uint16_t calData[5] = TOUCH_CALIBRATION;
-  uint16_t x = 0, y = 0;
-  boolean pressed;
-
-  tft.setTouch(calData);
-
-  while (true) {
-
-    pressed = tft.getTouch(&x, &y);
-    if (pressed) {
-      Serial.printf("Press seen at x:%i, y:%i\n", x, y);
-    }
-    delay(200);
-  }
 }
 
 void get_weather_t(void * pvParameters ) {
 
   //const char apiKey[] = OPEN_WEATHER_API_KEY;
   const char apiKey[] = WEATHERBIT_API_KEY;
-  const char weather_server[] = WEATHER_SERVER;
-  const char location[] = LOCATION;
-  char line[CHAR_LEN];
   String requestUrl;
 
   while (true) {
@@ -225,7 +196,7 @@ void get_weather_t(void * pvParameters ) {
           String payload = httpClientWeather.getString();
 
           DynamicJsonDocument root(5000);
-          auto deseraliseError = deserializeJson(root, payload);
+          deserializeJson(root, payload);
           float weatherTemperature = root["data"][0]["temp"];
           int weatherPressure = root["data"][0]["pres"];
           const char* weatherDescription = root["data"][0]["weather"]["description"];
@@ -258,7 +229,7 @@ void get_weather_t(void * pvParameters ) {
           String payload = httpClientWeather.getString();
 
           DynamicJsonDocument root(20000);
-          auto deseraliseError = deserializeJson(root, payload);
+          deserializeJson(root, payload);
           for (int i = 0; i < FORECAST_DAYS; i++) {
 
             time_t forecastTime = root["data"][i]["ts"];
@@ -298,9 +269,8 @@ void get_weather_t(void * pvParameters ) {
           String payload = httpClientWeather.getString();
 
           DynamicJsonDocument root(20000);
-          auto deseraliseError = deserializeJson(root, payload);
+          deserializeJson(root, payload);
           for (int i = 0; i < FORECAST_HOURS; i++) {
-
 
             const char* localTime = root["data"][i]["timestamp_local"];
             const char* forecastIcon = root["data"][i]["weather"]["icon"];
@@ -374,7 +344,7 @@ void time_init() {
   }
   setTime(timeClient.getEpochTime());
 
-
+  Serial.println();
   Serial.println(F("Epoch time is : "));
   Serial.println(timeClient.getEpochTime());
   Serial.print(F("Time is : "));
@@ -413,7 +383,6 @@ void mqtt_connect() {
   strncpy(statusMessage, "Connected to ", CHAR_LEN);
   strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
   statusMessageUpdated = true;
-
   delay(1000);
 }
 
@@ -440,13 +409,11 @@ void draw_temperature_icon (const char changeChar, const char* output, int x, in
         //ui.drawBmp("/temperature/same.bmp", x, y);
       }
       break;
-
   }
 }
 
 void tft_output_t(void * pvParameters ) {
 
-  uint16_t calData[5] = TOUCH_CALIBRATION;
   uint16_t x = 0, y = 0;
   boolean pressed;
   time_t lastPressed = 0;
@@ -507,7 +474,6 @@ void tft_output_t(void * pvParameters ) {
   ui.drawJpeg("/images/logo.jpg", 0, 0);
   delay(5000);
   tft.fillScreen(TFT_BLACK);
-
   tftValues.on = true;
 
   tft.fillRect(TITLE_LEFT, TITLE_TOP, TITLE_RIGHT - TITLE_LEFT, TITLE_BOTTOM - TITLE_TOP, TFT_GREEN);
@@ -569,9 +535,7 @@ void tft_output_t(void * pvParameters ) {
       if (temperatureUpdated[i]) {
         temperatureUpdated[i] = false;
         tft.fillRect(tempZone[i].x, tempZone[i].y, tempZone[i].xSize, tempZone[i].ySize, TFT_BLACK);
-        //tft_draw_string_centre(readings[i].description, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 5, 2);
         tft.drawString(readings[i].description, tempZone[i].x, tempZone[i].y + 5, 2);
-        //tft_draw_string_centre(readings[i].output, tempZone[i].x, tempZone[i].x + tempZone[i].xSize, tempZone[i].y + 23, 6);
         tft.drawString(readings[i].output, tempZone[i].x, tempZone[i].y + 23, 6);
         draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 55, tempZone[i].y + 28);
       }
@@ -579,7 +543,7 @@ void tft_output_t(void * pvParameters ) {
 
     yield();
     if (displayType == MAIN_SCREEN) {
-      if (weatherUpdated && weather.updateTime !=0) {
+      if (weatherUpdated && weather.updateTime != 0) {
         weatherUpdated = false;
         tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 8, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_BOTTOM - WEATHER_TOP - 15, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -587,7 +551,6 @@ void tft_output_t(void * pvParameters ) {
         tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
         weather.description[0] = toupper(weather.description[0]);
         tft.drawString(weather.description, WEATHER_LEFT + 105, WEATHER_TOP + 25 , 4);
-        //ui.drawBmp("/wbicons/" + String(weather.icon) + ".bmp", WEATHER_LEFT + 140, WEATHER_TOP + 10);
       }
       yield();
 
@@ -612,7 +575,7 @@ void tft_output_t(void * pvParameters ) {
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         tft.drawString("Max", 0 , DAYS_FORECAST_TOP + 70, 2);
         tft.drawString("Min", 0 , DAYS_FORECAST_TOP + 90, 2);
-        
+
         for (int i = 0; i <  DISPLAY_DAYS; i++) {
           tft_draw_string_centre(dayShortStr(weekday(forecastDays[i + 2].dateTime)), i * DAYS_FORECAST_RIGHT / 4, (i + 1) * DAYS_FORECAST_RIGHT / 4, DAYS_FORECAST_TOP + 5, 2);
           ui.drawBmp("/wbicons/" + String(forecastDays[i + 2].icon) + ".bmp", i * DAYS_FORECAST_RIGHT / 4 + 15, DAYS_FORECAST_TOP + 20);
@@ -683,9 +646,8 @@ void update_temperature(char* recMessage, int index) {
 void update_mqtt_settings() {
 
   for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
-    if (settings[i].description == DESC_ONOFF) {
+    if (strcmp(settings[i].description,DESC_ONOFF)==0) {
       mqttClient.beginMessage(settings[i].confirmTopic);
-
       mqttClient.print(tftValues.on);
       mqttClient.endMessage();
     }
@@ -710,7 +672,6 @@ void receive_mqtt_messages_t(void * pvParams) {
   String topic;
   char recMessage[CHAR_LEN] = {0};
   int index;
-  bool readingMessageReceived;
 
   while (true) {
     delay(10);
@@ -724,9 +685,8 @@ void receive_mqtt_messages_t(void * pvParams) {
       mqttClient.read((unsigned char*)recMessage, (size_t)sizeof(recMessage)); //Distructive read of message
       recMessage[messageSize] = 0;
       Serial.println("Topic: " + String(topic) + " Msg: " + recMessage);
-      readingMessageReceived = false;               // To check if non reading message
       for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
-        if (topic == readings[i].topic) {
+        if (topic==String(readings[i].topic)) {
           index = i;
           if (readings[i].dataType == DATA_TEMPERATURE) {
             update_temperature(recMessage, index);
@@ -737,7 +697,7 @@ void receive_mqtt_messages_t(void * pvParams) {
         }
       }
       for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
-        if (topic == settings[i].topic) {
+        if (topic==String(settings[i].topic)) {
           index = i;
           if (settings[i].dataType == DATA_ONOFF) {
             update_on_off(recMessage, index);
@@ -766,7 +726,7 @@ void loop() {
     Serial.println(new_biggest_free_block);
   }
   for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
-    if ((millis() > readings[i].lastMessageTime + (MAX_NO_MESSAGE_SEC * 1000)) && (readings[i].output != NO_READING) && (readings[i].changeChar == CHAR_NO_MESSAGE)) {
+    if ((millis() > readings[i].lastMessageTime + (MAX_NO_MESSAGE_SEC * 1000)) && (strcmp(readings[i].output,NO_READING)!=0) && (readings[i].changeChar == CHAR_NO_MESSAGE)) {
       readings[i].changeChar = CHAR_NO_MESSAGE;
       temperatureUpdated[i] = true;
     }
