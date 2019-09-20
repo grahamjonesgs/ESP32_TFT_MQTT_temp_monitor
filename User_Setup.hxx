@@ -19,6 +19,7 @@ T_CLK / SCLK
 #define TFT_RST   5 // Reset pin (could connect to RST pin)
 #define TOUCH_CS 2     // Chip select pin (T_CS) of touch screen
 
+
 // Define fonts
 #define LOAD_GLCD   // Font 1. Original Adafruit 8 pixel font needs ~1820 bytes in FLASH
 #define LOAD_FONT2  // Font 2. Small 16 pixel high font, needs ~3534 bytes in FLASH, 96 characters
