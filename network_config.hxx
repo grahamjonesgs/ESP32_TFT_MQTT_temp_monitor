@@ -1,4 +1,4 @@
-// Upate with WiFI and MQTT definitions
+ // Upate with WiFI and MQTT definitions
 #define WIFI_SSID "xxxx"         
 #define WIFI_PASSWORD "xxxx"
 
@@ -7,8 +7,10 @@
 #define MQTT_PASSWORD "xxxx"  // password
 #define MQTT_PORT 8883              // MQTT port
 #define OPEN_WEATHER_API_KEY "xxx"
+#define WEATHERBIT_API_KEY "xxxxxxxxxxxxxx"
 #define LOCATION "Munich"
-#define WEATHER_SERVER "api.openweathermap.org"
+//#define WEATHER_SERVER "api.openweathermap.org"
+#define WEATHER_SERVER "api.weatherbit.io"
 
 #define STORED_READING 6
 #define READINGS_ARRAY  \
