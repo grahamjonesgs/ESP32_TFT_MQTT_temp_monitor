@@ -483,7 +483,7 @@ void tft_output_t(void * pvParameters ) {
   // Set up the weather message box
   tft.drawLine(WEATHER_LEFT, WEATHER_TOP, WEATHER_RIGHT, WEATHER_TOP, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft_draw_string_centre(" Weather ", WEATHER_LEFT, WEATHER_RIGHT, WEATHER_TOP - 7 , 2);
+  tft_draw_string_centre(LOCATION, WEATHER_LEFT, WEATHER_RIGHT, WEATHER_TOP - 7 , 2);
 
   while (true) {
     delay(100);
