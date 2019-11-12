@@ -728,6 +728,7 @@ void loop() {
   for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
     if ((millis() > readings[i].lastMessageTime + (MAX_NO_MESSAGE_SEC * 1000)) && (strcmp(readings[i].output,NO_READING)!=0) && (readings[i].changeChar == CHAR_NO_MESSAGE)) {
       readings[i].changeChar = CHAR_NO_MESSAGE;
+      sprintf(readings[i].output, NO_READING);
       temperatureUpdated[i] = true;
     }
   }
