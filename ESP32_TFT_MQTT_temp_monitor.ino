@@ -646,7 +646,7 @@ void update_temperature(char* recMessage, int index) {
 void update_mqtt_settings() {
 
   for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
-    if (strcmp(settings[i].description,DESC_ONOFF)==0) {
+    if (strcmp(settings[i].description, DESC_ONOFF) == 0) {
       mqttClient.beginMessage(settings[i].confirmTopic);
       mqttClient.print(tftValues.on);
       mqttClient.endMessage();
@@ -686,7 +686,7 @@ void receive_mqtt_messages_t(void * pvParams) {
       recMessage[messageSize] = 0;
       Serial.println("Topic: " + String(topic) + " Msg: " + recMessage);
       for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
-        if (topic==String(readings[i].topic)) {
+        if (topic == String(readings[i].topic)) {
           index = i;
           if (readings[i].dataType == DATA_TEMPERATURE) {
             update_temperature(recMessage, index);
@@ -697,7 +697,7 @@ void receive_mqtt_messages_t(void * pvParams) {
         }
       }
       for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
-        if (topic==String(settings[i].topic)) {
+        if (topic == String(settings[i].topic)) {
           index = i;
           if (settings[i].dataType == DATA_ONOFF) {
             update_on_off(recMessage, index);
@@ -726,7 +726,7 @@ void loop() {
     Serial.println(new_biggest_free_block);
   }
   for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
-    if ((millis() > readings[i].lastMessageTime + (MAX_NO_MESSAGE_SEC * 1000)) && (strcmp(readings[i].output,NO_READING)!=0) && (readings[i].changeChar == CHAR_NO_MESSAGE)) {
+    if ((millis() > readings[i].lastMessageTime + (MAX_NO_MESSAGE_SEC * 1000)) && (strcmp(readings[i].output, NO_READING) != 0) && (readings[i].changeChar == CHAR_NO_MESSAGE)) {
       readings[i].changeChar = CHAR_NO_MESSAGE;
       sprintf(readings[i].output, NO_READING);
       temperatureUpdated[i] = true;
