@@ -56,10 +56,10 @@ struct Readings {                     // Array to hold the incoming measurement
   unsigned long lastMessageTime;      // Millis this was last updated
 };
 
-struct Settings {                     // Structure to hold the cincomming settings and outgoing confirmations
+struct Settings {                     // Structure to hold the incomming settings and outgoing confirmations
   const char description[CHAR_LEN];   // Currently set to 3 chars long
   const char topic[CHAR_LEN];         // MQTT topic
-  const char confirmTopic[CHAR_LEN];      // To confirm setting changes back to broker
+  const char confirmTopic[CHAR_LEN];  // To confirm setting changes back to broker
   float currentValue;                 // Current value received
   int dataType;                       // Type of data received
 };

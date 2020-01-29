@@ -1,4 +1,4 @@
- // Upate with WiFI and MQTT definitions
+// Update with WiFI and MQTT definitions
 #define WIFI_SSID "xxxx"         
 #define WIFI_PASSWORD "xxxx"
 
