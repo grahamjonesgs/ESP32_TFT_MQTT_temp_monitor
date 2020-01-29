@@ -24,6 +24,15 @@
   uint16_t calData[5] = { 307, 3372, 446, 3129, 1 };
   tft.setTouch(calData);
 
+  Needs Libraries :-
+  - ArduinoJson
+  - ArduinoMqttClient
+  - ESP32_AnalogWrite
+  - JPEGDecoder
+  - NTPClient
+  - TFT_eSPI - copy user_setup.hxx as user_setup.h to the TFT_eSPI library to replace the default
+  - Time
+
 */
 
 #include <ArduinoMqttClient.h>
