@@ -123,7 +123,7 @@ struct ForecastHours {
 #define DATA_ONOFF 3
 
 // Define constants used
-#define MAX_NO_MESSAGE_SEC 1800LL        // Time before CHAR_NO_MESSAGE is set in seconds (long)
+#define MAX_NO_MESSAGE_SEC 3600LL        // Time before CHAR_NO_MESSAGE is set in seconds (long)
 #define TIME_RETRIES 100                 // Number of time to retry getting the time during setup
 #define WEATHER_UPDATE_INTERVAL 600      // Interval between weather updates
 #define FORECAST_DAYS_UPDATE_INTERVAL 3600     // Interval between days forecast updates
@@ -141,7 +141,7 @@ struct ForecastHours {
 // Screen types
 #define MAIN_SCREEN 0
 #define FORECAST_SCREEN 1
-int displayType = MAIN_SCREEN;
+int displayType = FORECAST_SCREEN;
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
@@ -272,6 +272,9 @@ void get_weather_t(void * pvParameters ) {
 
     if (now() - forecastHoursUpdateTime > FORECAST_HOURS_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/hourly?city=" + String(LOCATION) + +"&hours=" + String(FORECAST_HOURS) + "&key=" + String(apiKey));
+
+      
+      Serial.println("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/hourly?city=" + String(LOCATION) + +"&hours=" + String(FORECAST_HOURS) + "&key=" + String(apiKey));
 
 
       int httpCode = httpClientWeather.GET();
