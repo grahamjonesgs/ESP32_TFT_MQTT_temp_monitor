@@ -141,7 +141,7 @@ struct ForecastHours {
 // Screen types
 #define MAIN_SCREEN 0
 #define FORECAST_SCREEN 1
-int displayType = FORECAST_SCREEN;
+int displayType = MAIN_SCREEN;
 
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
@@ -196,7 +196,7 @@ void get_weather_t(void * pvParameters ) {
   String requestUrl;
 
   while (true) {
-    delay(2000);
+    
     if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
       int httpCode = httpClientWeather.GET();
@@ -270,12 +270,8 @@ void get_weather_t(void * pvParameters ) {
       }
     }
 
-    if (now() - forecastHoursUpdateTime > FORECAST_HOURS_UPDATE_INTERVAL) {
+    if ((now() - forecastHoursUpdateTime > FORECAST_HOURS_UPDATE_INTERVAL) && false) {  // added false to stop updates as broken
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/hourly?city=" + String(LOCATION) + +"&hours=" + String(FORECAST_HOURS) + "&key=" + String(apiKey));
-
-      
-      Serial.println("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/hourly?city=" + String(LOCATION) + +"&hours=" + String(FORECAST_HOURS) + "&key=" + String(apiKey));
-
 
       int httpCode = httpClientWeather.GET();
       if (httpCode > 0) {
@@ -309,6 +305,7 @@ void get_weather_t(void * pvParameters ) {
       }
     }
     httpClientWeather.end();
+    delay(2000);
   }
 }
 
@@ -447,12 +444,12 @@ void tft_output_t(void * pvParameters ) {
   int TEMP_LEFT = 0;
   int TEMP_RIGHT = 320;
   int TEMP_TOP = 15;
-  int TEMP_BOTTOM = 80;
+  int TEMP_BOTTOM = 155;
 
   int WEATHER_LEFT = 0;
   int WEATHER_RIGHT  = 320;
-  int WEATHER_TOP = 90;
-  int WEATHER_BOTTOM = 159;
+  int WEATHER_TOP = 160;
+  int WEATHER_BOTTOM = 215;
 
   int HOURS_FORECAST_LEFT = 0;
   int HOURS_FORECAST_RIGHT = 320;
@@ -492,7 +489,7 @@ void tft_output_t(void * pvParameters ) {
 
   tft.fillRect(TITLE_LEFT, TITLE_TOP, TITLE_RIGHT - TITLE_LEFT, TITLE_BOTTOM - TITLE_TOP, TFT_GREEN);
   tft.setTextColor(TFT_BLACK, TFT_GREEN);
-  tft_draw_string_centre(" The Klauss-o-meter V2.0", TITLE_LEFT, TITLE_RIGHT, TITLE_TOP, 2);
+  tft_draw_string_centre(" The Klauss-o-meter V2.1", TITLE_LEFT, TITLE_RIGHT, TITLE_TOP, 2);
 
   // Set up the weather message box
   tft.drawLine(WEATHER_LEFT, WEATHER_TOP, WEATHER_RIGHT, WEATHER_TOP, TFT_RED);
@@ -550,14 +547,15 @@ void tft_output_t(void * pvParameters ) {
         temperatureUpdated[i] = false;
         tft.fillRect(tempZone[i].x, tempZone[i].y, tempZone[i].xSize, tempZone[i].ySize, TFT_BLACK);
         tft.drawString(readings[i].description, tempZone[i].x, tempZone[i].y + 5, 2);
-        tft.drawString(readings[i].output, tempZone[i].x, tempZone[i].y + 23, 6);
-        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 55, tempZone[i].y + 28);
+        tft.drawString(readings[i].output, tempZone[i].x, tempZone[i].y + 33, 6);
+        tft.drawString(readings[i + 4].output, tempZone[i].x, tempZone[i].y + 90, 4); // Output the humidity
+        draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 55, tempZone[i].y + 38);
       }
     }
 
     yield();
     if (displayType == MAIN_SCREEN) {
-      if (weatherUpdated && weather.updateTime != 0) {
+      if (weatherUpdated) {
         weatherUpdated = false;
         tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 8, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_BOTTOM - WEATHER_TOP - 15, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -568,7 +566,7 @@ void tft_output_t(void * pvParameters ) {
       }
       yield();
 
-      if (forecastHoursUpdated && forecastHoursUpdateTime != 0) {
+      /*if (forecastHoursUpdated && forecastHoursUpdateTime != 0) {
         forecastHoursUpdated = false;
         tft.fillRect(HOURS_FORECAST_LEFT, HOURS_FORECAST_TOP, HOURS_FORECAST_RIGHT - HOURS_FORECAST_LEFT, HOURS_FORECAST_BOTTOM - HOURS_FORECAST_TOP, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -577,7 +575,7 @@ void tft_output_t(void * pvParameters ) {
           ui.drawBmp("/wbicons/" + String(forecastHours[i].icon) + ".bmp", i * HOURS_FORECAST_RIGHT / DISPLAY_HOURS + 10, HOURS_FORECAST_TOP + 20);
 
         }
-      }
+        }*/
     }
 
     else
@@ -657,6 +655,58 @@ void update_temperature(char* recMessage, int index) {
   statusMessageUpdated = true;
 }
 
+void update_humidity(char* recMessage, int index) {
+
+  float averageHistory;
+  float totalHistory = 0.0;
+
+  readings[index].currentValue = atof(recMessage);
+  sprintf(readings[index].output, "%2.0f%s", readings[index].currentValue, "%");
+
+  if (readings[index].readingIndex == 0) {
+    readings[index].changeChar = CHAR_BLANK;  // First reading of this boot
+    readings[index].lastValue[0] = readings[index].currentValue;
+  }
+  else
+  {
+    for (int i = 0; i < readings[index].readingIndex; i++) {
+      totalHistory = totalHistory +  readings[index].lastValue[i];
+    }
+    averageHistory = totalHistory / readings[index].readingIndex;
+
+    if (readings[index].currentValue > averageHistory) {
+      readings[index].changeChar = CHAR_UP;
+    }
+    if (readings[index].currentValue < averageHistory) {
+      readings[index].changeChar = CHAR_DOWN;
+    }
+    if (readings[index].currentValue == averageHistory) {
+      readings[index].changeChar = CHAR_SAME;
+    }
+
+    if (readings[index].readingIndex == STORED_READING) {
+      readings[index].readingIndex--;
+      readings[index].enoughData = CHAR_ENOUGH_DATA;      // Set flag that we have all the readings
+      for (int i = 0; i < STORED_READING - 1; i++) {
+        readings[index].lastValue[i] = readings[index].lastValue[i + 1];
+      }
+    }
+    else {
+      readings[index].enoughData = CHAR_NOT_ENOUGH_DATA;
+    }
+
+    readings[index].lastValue[readings[index].readingIndex] = readings[index].currentValue; // update with latest value
+  }
+
+  readings[index].readingIndex++;
+  readings[index].lastMessageTime = millis();
+  temperatureUpdated[index-4] = true;
+  strncpy(statusMessage, "Update received for ", CHAR_LEN);
+  strncat(statusMessage, readings[index].description , CHAR_LEN);
+  statusMessageUpdated = true;
+}
+
+
 void update_mqtt_settings() {
 
   for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
@@ -706,7 +756,7 @@ void receive_mqtt_messages_t(void * pvParams) {
             update_temperature(recMessage, index);
           }
           if (readings[i].dataType == DATA_HUMIDITY) {
-            //update_temperature(recMessage, index);
+            update_humidity(recMessage, index);
           }
         }
       }
