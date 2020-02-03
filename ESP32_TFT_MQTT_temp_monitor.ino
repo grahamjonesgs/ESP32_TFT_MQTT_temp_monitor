@@ -166,7 +166,6 @@ MqttClient mqttClient(wifiClient);
 MqttClient mqttClient_adafruit(wifiClient_adafruit);
 
 HTTPClient httpClientWeather;
-HTTPClient httpClientInsta;
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
@@ -366,6 +365,7 @@ void time_init() {
 
 void mqtt_connect() {
   
+
   mqttClient_adafruit.setUsernamePassword(ADAFRUIT_MQTT_USER, ADAFRUIT_MQTT_PASSWORD);
   if (!mqttClient_adafruit.connect(ADAFRUIT_MQTT_SERVER, ADAFRUIT_MQTT_PORT)) {
     Serial.print("Adafruit MQTT connection failed");
@@ -373,7 +373,7 @@ void mqtt_connect() {
   else {
     Serial.print("Adafruit MQTT connection OK");
   }
-  
+
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASSWORD);
   Serial.println();
   Serial.print("Attempting to connect to the MQTT broker : ");
@@ -585,8 +585,8 @@ void tft_output_t(void * pvParameters ) {
         tft.fillRect(HOURS_FORECAST_LEFT, HOURS_FORECAST_TOP, HOURS_FORECAST_RIGHT - HOURS_FORECAST_LEFT, HOURS_FORECAST_BOTTOM - HOURS_FORECAST_TOP, TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         for (int i = 0; i < DISPLAY_HOURS; i++) {
-          tft_draw_string_centre(forecastHours[i].localTime, i * HOURS_FORECAST_RIGHT / DISPLAY_HOURS, (i + 1) * HOURS_FORECAST_RIGHT / DISPLAY_HOURS, HOURS_FORECAST_TOP + 5, 2);
-          ui.drawBmp("/wbicons/" + String(forecastHours[i].icon) + ".bmp", i * HOURS_FORECAST_RIGHT / DISPLAY_HOURS + 10, HOURS_FORECAST_TOP + 20);
+        tft_draw_string_centre(forecastHours[i].localTime, i * HOURS_FORECAST_RIGHT / DISPLAY_HOURS, (i + 1) * HOURS_FORECAST_RIGHT / DISPLAY_HOURS, HOURS_FORECAST_TOP + 5, 2);
+        ui.drawBmp("/wbicons/" + String(forecastHours[i].icon) + ".bmp", i * HOURS_FORECAST_RIGHT / DISPLAY_HOURS + 10, HOURS_FORECAST_TOP + 20);
 
         }
         }*/
@@ -680,6 +680,10 @@ void update_humidity(char* recMessage, int index) {
 
   readings[index].currentValue = atof(recMessage);
   sprintf(readings[index].output, "%2.0f%s", readings[index].currentValue, "%");
+
+  mqttClient_adafruit.beginMessage(String(ADAFRUIT_MQTT_USER) + String("/feeds/") + String(readings[index].description) + String("_h"));
+  mqttClient_adafruit.print(readings[index].currentValue);
+  mqttClient_adafruit.endMessage();
 
   if (readings[index].readingIndex == 0) {
     readings[index].changeChar = CHAR_BLANK;  // First reading of this boot
