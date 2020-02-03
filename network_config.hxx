@@ -6,6 +6,12 @@
 #define MQTT_USER "xxxx"      // username 
 #define MQTT_PASSWORD "xxxx"  // password
 #define MQTT_PORT 8883              // MQTT port
+
+#define ADAFRUIT_MQTT_SERVER "xxx.xxxx.xxx"  // server name or IP
+#define ADAFRUIT_MQTT_USER "xxxxxx"      // username 
+#define ADAFRUIT_MQTT_PASSWORD "xxxxx"  // password
+#define ADAFRUIT_MQTT_PORT 8883              // MQTT port
+
 #define OPEN_WEATHER_API_KEY "xxx"
 #define WEATHERBIT_API_KEY "xxxxxxxxxxxxxx"
 #define LOCATION "Munich"

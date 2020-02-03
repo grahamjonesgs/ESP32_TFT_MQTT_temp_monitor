@@ -4,7 +4,7 @@
   virtual int connect(const char *host, uint16_t port, int timeout) =0;
 
   // Define in user_setup.h in the library directory in TFT_eSPI
-  #define TFT_MISO 22
+  #define TbFT_MISO 22
   #define TFT_MOSI 23
   #define TFT_SCLK 18
   #define TFT_CS   21  // Chip select control pin
@@ -161,7 +161,9 @@ bool forecastHoursUpdated = false;
 TftValues tftValues;
 
 WiFiClientSecure wifiClient;
+WiFiClientSecure wifiClient_adafruit;
 MqttClient mqttClient(wifiClient);
+MqttClient mqttClient_adafruit(wifiClient_adafruit);
 
 HTTPClient httpClientWeather;
 HTTPClient httpClientInsta;
@@ -196,7 +198,7 @@ void get_weather_t(void * pvParameters ) {
   String requestUrl;
 
   while (true) {
-    
+
     if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
       int httpCode = httpClientWeather.GET();
@@ -363,7 +365,15 @@ void time_init() {
 }
 
 void mqtt_connect() {
-
+  
+  mqttClient_adafruit.setUsernamePassword(ADAFRUIT_MQTT_USER, ADAFRUIT_MQTT_PASSWORD);
+  if (!mqttClient_adafruit.connect(ADAFRUIT_MQTT_SERVER, ADAFRUIT_MQTT_PORT)) {
+    Serial.print("Adafruit MQTT connection failed");
+  }
+  else {
+    Serial.print("Adafruit MQTT connection OK");
+  }
+  
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASSWORD);
   Serial.println();
   Serial.print("Attempting to connect to the MQTT broker : ");
@@ -395,6 +405,10 @@ void mqtt_connect() {
   strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
   statusMessageUpdated = true;
   delay(1000);
+
+
+
+
 }
 
 void tft_draw_string_centre(const char* message, int leftx, int rightx, int y, int font) {
@@ -612,6 +626,10 @@ void update_temperature(char* recMessage, int index) {
   readings[index].currentValue = atof(recMessage);
   sprintf(readings[index].output, "%2.0f", readings[index].currentValue);
 
+  mqttClient_adafruit.beginMessage(String(ADAFRUIT_MQTT_USER) + String("/feeds/") + String(readings[index].description));
+  mqttClient_adafruit.print(readings[index].currentValue);
+  mqttClient_adafruit.endMessage();
+
   if (readings[index].readingIndex == 0) {
     readings[index].changeChar = CHAR_BLANK;  // First reading of this boot
     readings[index].lastValue[0] = readings[index].currentValue;
@@ -700,7 +718,7 @@ void update_humidity(char* recMessage, int index) {
 
   readings[index].readingIndex++;
   readings[index].lastMessageTime = millis();
-  temperatureUpdated[index-4] = true;
+  temperatureUpdated[index - 4] = true;
   strncpy(statusMessage, "Update received for ", CHAR_LEN);
   strncat(statusMessage, readings[index].description , CHAR_LEN);
   statusMessageUpdated = true;
