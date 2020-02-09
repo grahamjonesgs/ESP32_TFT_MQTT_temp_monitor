@@ -366,25 +366,31 @@ void time_init() {
   Serial.println(timeClient.getFormattedTime());
 }
 
+void mqtt_connect_other() {
+  if (!mqttClient_adafruit.connected()) {
+    mqttClient_adafruit.setUsernamePassword(ADAFRUIT_MQTT_USER, ADAFRUIT_MQTT_PASSWORD);
+    if (!mqttClient_adafruit.connect(ADAFRUIT_MQTT_SERVER, ADAFRUIT_MQTT_PORT)) {
+      Serial.println("Adafruit MQTT connection failed");
+    }
+    else {
+      Serial.println("Adafruit MQTT connection OK");
+    }
+  }
+
+  if (!mqttClient_nodered.connected()) {
+    mqttClient_nodered.setUsernamePassword(NODERED_MQTT_USER, NODERED_MQTT_PASSWORD);
+    if (!mqttClient_nodered.connect(NODERED_MQTT_SERVER, NODERED_MQTT_PORT)) {
+      Serial.println("Nodered MQTT connection failed");
+    }
+    else {
+      Serial.println("Nodered MQTT connection OK");
+    }
+  }
+}
+
 void mqtt_connect() {
 
-
-  mqttClient_adafruit.setUsernamePassword(ADAFRUIT_MQTT_USER, ADAFRUIT_MQTT_PASSWORD);
-  if (!mqttClient_adafruit.connect(ADAFRUIT_MQTT_SERVER, ADAFRUIT_MQTT_PORT)) {
-    Serial.print("Adafruit MQTT connection failed");
-  }
-  else {
-    Serial.print("Adafruit MQTT connection OK");
-  }
-
-  mqttClient_nodered.setUsernamePassword(NODERED_MQTT_USER, NODERED_MQTT_PASSWORD);
-  if (!mqttClient_nodered.connect(NODERED_MQTT_SERVER, NODERED_MQTT_PORT)) {
-    Serial.print("Nodered MQTT connection failed");
-  }
-  else {
-    Serial.print("Nodered MQTT connection OK");
-  }
-
+  mqtt_connect_other();
 
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASSWORD);
   Serial.println();
@@ -417,9 +423,6 @@ void mqtt_connect() {
   strncat(statusMessage, MQTT_SERVER, CHAR_LEN);
   statusMessageUpdated = true;
   delay(1000);
-
-
-
 
 }
 
@@ -803,6 +806,7 @@ void receive_mqtt_messages_t(void * pvParams) {
       mqttClient.read((unsigned char*)recMessage, (size_t)sizeof(recMessage)); //Distructive read of message
       recMessage[messageSize] = 0;
       Serial.println("Topic: " + String(topic) + " Msg: " + recMessage);
+      mqtt_connect_other();  // check if other connections OK
       for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
         if (topic == String(readings[i].topic)) {
           index = i;
@@ -831,7 +835,7 @@ void loop() {
   size_t free_heap = 0;
   size_t new_biggest_free_block = 0;
 
-  delay(500);
+  delay(2000);
   timeClient.update();
 
   free_heap = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -854,4 +858,5 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     network_connect();
   }
+
 }
