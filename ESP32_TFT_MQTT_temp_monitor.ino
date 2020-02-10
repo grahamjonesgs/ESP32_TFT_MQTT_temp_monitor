@@ -121,6 +121,7 @@ struct ForecastHours {
 #define DATA_HUMIDITY 1
 #define DATA_SETTING 2
 #define DATA_ONOFF 3
+#define DATA_BATTERY 4
 
 // Define constants used
 #define MAX_NO_MESSAGE_SEC 3600LL        // Time before CHAR_NO_MESSAGE is set in seconds (long)
@@ -633,6 +634,26 @@ void tft_output_t(void * pvParameters ) {
   }
 }
 
+
+void update_battery(char* recMessage, int index) {
+
+
+  readings[index].currentValue = atof(recMessage);
+  sprintf(readings[index].output, "%2.0f%s", readings[index].currentValue, "%");
+
+
+  char topicNodered[255];
+  for (int i = 0; i < strlen(readings[index].topic) - 13; i++) {
+    topicNodered[i] = readings[index].topic[i + 14];
+  }
+
+  mqttClient_nodered.beginMessage(topicNodered);
+  mqttClient_nodered.print(readings[index].currentValue);
+  mqttClient_nodered.endMessage();
+
+
+}
+
 void update_temperature(char* recMessage, int index) {
 
   float averageHistory;
@@ -815,6 +836,9 @@ void receive_mqtt_messages_t(void * pvParams) {
           }
           if (readings[i].dataType == DATA_HUMIDITY) {
             update_humidity(recMessage, index);
+          }
+          if (readings[i].dataType == DATA_BATTERY) {
+            update_battery(recMessage, index);
           }
         }
       }

@@ -20,8 +20,17 @@
 
 #define STORED_READING 6
 #define READINGS_ARRAY  \
-  {"Bth", "gBridge/xxxx", NO_READING, 0.0, {0.0}, CHAR_BLANK, NOT_ENOUGH_DATA, DATA_TEMPERATURE, 0}, \
-  {"Bed", "gBridge/xxxx", NO_READING, 0.0, {0.0}, CHAR_BLANK, NOT_ENOUGH_DATA, DATA_HUMIDITY, 0}
+
+{"Bathroom", "xxxx/xxxx/bathroom/tempset-ambient/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_TEMPERATURE, 0, 0}, \
+  {"Living", "xxxx/xxxx/livingroom/tempset-ambient/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_TEMPERATURE, 0,0},\
+  {"Kitchen", "xxxx/xxxx/kitchen/tempset-ambient/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_TEMPERATURE, 0,0}, \
+  {"Bedroom", "xxxx/xxxx/bedroom/tempset-ambient/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_TEMPERATURE, 0,0}, \
+  {"Bathroom", "xxxx/xxxx/bathroom/tempset-humidity/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_HUMIDITY, 0,0}, \
+  {"Living", "xxxx/xxxx/livingroom/tempset-humidity/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_HUMIDITY, 0,0},\
+  {"Kitchen", "xxxx/xxxx/kitchen/tempset-humidity/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_HUMIDITY, 0,0}, \
+  {"Bedroom", "xxxx/xxxx/bedroom/tempset-humidity/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_HUMIDITY, 0,0}, \
+  {"living", "xxxx/xxxx/kitchen/battery/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_BATTERY, 0,0}, \
+  {"Bathroom", "xxxx/xxxx/bedroom/battery/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_BATTERY, 0,0}
 
   
 #define SETTINGS_ARRAY \ 
