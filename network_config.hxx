@@ -29,8 +29,8 @@
   {"Living", "xxxx/xxxx/livingroom/tempset-humidity/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_HUMIDITY, 0,0},\
   {"Kitchen", "xxxx/xxxx/kitchen/tempset-humidity/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_HUMIDITY, 0,0}, \
   {"Bedroom", "xxxx/xxxx/bedroom/tempset-humidity/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_HUMIDITY, 0,0}, \
-  {"living", "xxxx/xxxx/kitchen/battery/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_BATTERY, 0,0}, \
-  {"Bathroom", "xxxx/xxxx/bedroom/battery/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_BATTERY, 0,0}
+  {"living", "gBridge/u1935/livingroom/battery/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_BATTERY, 0,0}, \
+  {"Bathroom", "gBridge/u1935/bathroom/battery/set", NO_READING, 0.0, {0.0}, CHAR_BLANK, CHAR_BLANK, DATA_BATTERY, 0,0}
 
   
 #define SETTINGS_ARRAY \ 

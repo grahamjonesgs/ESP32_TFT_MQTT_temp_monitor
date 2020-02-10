@@ -132,7 +132,7 @@ struct ForecastHours {
 #define FORECAST_DAYS 16                  // Number of day's forecast to request
 #define FORECAST_HOURS 16                  // Number of hours's forecast to request
 #define STATUS_MESSAGE_TIME 5           // Seconds an status message can be displayed
-#define MAX_WIFI_RETRIES 3
+#define MAX_WIFI_RETRIES 1
 #define LED_BRIGHT 255
 #define LED_DIM 20
 #define LED_PIN 4
@@ -646,7 +646,6 @@ void update_battery(char* recMessage, int index) {
   for (int i = 0; i < strlen(readings[index].topic) - 13; i++) {
     topicNodered[i] = readings[index].topic[i + 14];
   }
-
   mqttClient_nodered.beginMessage(topicNodered);
   mqttClient_nodered.print(readings[index].currentValue);
   mqttClient_nodered.endMessage();
@@ -816,7 +815,7 @@ void receive_mqtt_messages_t(void * pvParams) {
   int index;
 
   while (true) {
-    delay(10);
+    delay(500);
     if (!mqttClient.connected()) {
       mqtt_connect();
     }
