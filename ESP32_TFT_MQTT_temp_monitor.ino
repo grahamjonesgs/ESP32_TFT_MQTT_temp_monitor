@@ -162,12 +162,7 @@ bool forecastHoursUpdated = false;
 TftValues tftValues;
 
 WiFiClientSecure wifiClient;
-WiFiClientSecure wifiClient_adafruit;
-WiFiClientSecure wifiClient_nodered;
 MqttClient mqttClient(wifiClient);
-MqttClient mqttClient_adafruit(wifiClient_adafruit);
-MqttClient mqttClient_nodered(wifiClient_nodered);
-
 
 HTTPClient httpClientWeather;
 
@@ -367,32 +362,8 @@ void time_init() {
   Serial.println(timeClient.getFormattedTime());
 }
 
-void mqtt_connect_other() {
-  if (!mqttClient_adafruit.connected()) {
-    mqttClient_adafruit.setUsernamePassword(ADAFRUIT_MQTT_USER, ADAFRUIT_MQTT_PASSWORD);
-    if (!mqttClient_adafruit.connect(ADAFRUIT_MQTT_SERVER, ADAFRUIT_MQTT_PORT)) {
-      Serial.println("Adafruit MQTT connection failed");
-    }
-    else {
-      Serial.println("Adafruit MQTT connection OK");
-    }
-  }
-
-  if (!mqttClient_nodered.connected()) {
-    mqttClient_nodered.setUsernamePassword(NODERED_MQTT_USER, NODERED_MQTT_PASSWORD);
-    if (!mqttClient_nodered.connect(NODERED_MQTT_SERVER, NODERED_MQTT_PORT)) {
-      Serial.println("Nodered MQTT connection failed");
-    }
-    else {
-      Serial.println("Nodered MQTT connection OK");
-    }
-  }
-}
-
 void mqtt_connect() {
-
-  mqtt_connect_other();
-
+  
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASSWORD);
   Serial.println();
   Serial.print("Attempting to connect to the MQTT broker : ");
@@ -635,24 +606,6 @@ void tft_output_t(void * pvParameters ) {
 }
 
 
-void update_battery(char* recMessage, int index) {
-
-
-  readings[index].currentValue = atof(recMessage);
-  sprintf(readings[index].output, "%2.0f%s", readings[index].currentValue, "%");
-
-
-  char topicNodered[255];
-  for (int i = 0; i < strlen(readings[index].topic) - 13; i++) {
-    topicNodered[i] = readings[index].topic[i + 14];
-  }
-  mqttClient_nodered.beginMessage(topicNodered);
-  mqttClient_nodered.print(readings[index].currentValue);
-  mqttClient_nodered.endMessage();
-
-
-}
-
 void update_temperature(char* recMessage, int index) {
 
   float averageHistory;
@@ -660,20 +613,6 @@ void update_temperature(char* recMessage, int index) {
 
   readings[index].currentValue = atof(recMessage);
   sprintf(readings[index].output, "%2.0f", readings[index].currentValue);
-
-  mqttClient_adafruit.beginMessage(String(ADAFRUIT_MQTT_USER) + String("/feeds/") + String(readings[index].description));
-  mqttClient_adafruit.print(readings[index].currentValue);
-  mqttClient_adafruit.endMessage();
-
-
-  char topicNodered[255];
-  for (int i = 0; i < strlen(readings[index].topic) - 13; i++) {
-    topicNodered[i] = readings[index].topic[i + 14];
-  }
-
-  mqttClient_nodered.beginMessage(topicNodered);
-  mqttClient_nodered.print(readings[index].currentValue);
-  mqttClient_nodered.endMessage();
 
   if (readings[index].readingIndex == 0) {
     readings[index].changeChar = CHAR_BLANK;  // First reading of this boot
@@ -725,20 +664,6 @@ void update_humidity(char* recMessage, int index) {
 
   readings[index].currentValue = atof(recMessage);
   sprintf(readings[index].output, "%2.0f%s", readings[index].currentValue, "%");
-
-  mqttClient_adafruit.beginMessage(String(ADAFRUIT_MQTT_USER) + String("/feeds/") + String(readings[index].description) + String("_h"));
-  mqttClient_adafruit.print(readings[index].currentValue);
-  mqttClient_adafruit.endMessage();
-
-  char topicNodered[255];
-  for (int i = 0; i < strlen(readings[index].topic) - 13; i++) {
-    topicNodered[i] = readings[index].topic[i + 14];
-  }
-
-  mqttClient_nodered.beginMessage(topicNodered);
-  mqttClient_nodered.print(readings[index].currentValue);
-  mqttClient_nodered.endMessage();
-
 
   if (readings[index].readingIndex == 0) {
     readings[index].changeChar = CHAR_BLANK;  // First reading of this boot
@@ -826,7 +751,7 @@ void receive_mqtt_messages_t(void * pvParams) {
       mqttClient.read((unsigned char*)recMessage, (size_t)sizeof(recMessage)); //Distructive read of message
       recMessage[messageSize] = 0;
       Serial.println("Topic: " + String(topic) + " Msg: " + recMessage);
-      mqtt_connect_other();  // check if other connections OK
+
       for (int i = 0; i < sizeof(readings) / sizeof(readings[0]); i++) {
         if (topic == String(readings[i].topic)) {
           index = i;
@@ -836,9 +761,7 @@ void receive_mqtt_messages_t(void * pvParams) {
           if (readings[i].dataType == DATA_HUMIDITY) {
             update_humidity(recMessage, index);
           }
-          if (readings[i].dataType == DATA_BATTERY) {
-            update_battery(recMessage, index);
-          }
+          
         }
       }
       for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
