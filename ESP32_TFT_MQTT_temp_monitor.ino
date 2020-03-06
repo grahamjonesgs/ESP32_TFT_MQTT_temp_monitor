@@ -88,6 +88,12 @@ struct Weather {
   time_t updateTime;
 };
 
+struct Cv {
+  int cases;
+  int deaths;
+  time_t updateTime;
+};
+
 struct ForecastDays {
   time_t dateTime;
   float maxTemp;
@@ -127,6 +133,7 @@ struct ForecastHours {
 #define MAX_NO_MESSAGE_SEC 3600LL        // Time before CHAR_NO_MESSAGE is set in seconds (long)
 #define TIME_RETRIES 100                 // Number of time to retry getting the time during setup
 #define WEATHER_UPDATE_INTERVAL 600      // Interval between weather updates
+#define CV_UPDATE_INTERVAL 120      // Interval between CV updates
 #define FORECAST_DAYS_UPDATE_INTERVAL 3600     // Interval between days forecast updates
 #define FORECAST_HOURS_UPDATE_INTERVAL 1800     // Interval between days forecast updates
 #define FORECAST_DAYS 16                  // Number of day's forecast to request
@@ -138,6 +145,7 @@ struct ForecastHours {
 #define LED_PIN 4
 #define PRESS_DEBOUNCE 1
 #define TOUCH_CALIBRATION { 330, 3303, 450, 3116, 1 }
+#define CV_SEARCH1 "Coronavirus Update (Live)"
 
 // Screen types
 #define MAIN_SCREEN 0
@@ -148,6 +156,7 @@ int displayType = MAIN_SCREEN;
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
 Weather weather = {0.0, 0, 0.0, "", "", "", 0, 0};
+Cv cv = {0, 0, 0};
 ForecastDays forecastDays[FORECAST_DAYS];
 ForecastHours forecastHours[FORECAST_HOURS];
 time_t forecastDaysUpdateTime = 0;
@@ -165,6 +174,9 @@ WiFiClientSecure wifiClient;
 MqttClient mqttClient(wifiClient);
 
 HTTPClient httpClientWeather;
+HTTPClient httpClientCV;
+WiFiClientSecure *client = new WiFiClientSecure;
+
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
@@ -194,6 +206,7 @@ void get_weather_t(void * pvParameters ) {
   //const char apiKey[] = OPEN_WEATHER_API_KEY;
   const char apiKey[] = WEATHERBIT_API_KEY;
   String requestUrl;
+  char CVMessage[1024];
 
   while (true) {
 
@@ -214,7 +227,7 @@ void get_weather_t(void * pvParameters ) {
           weather.temperature = weatherTemperature;
           weather.pressure = weatherPressure;
           if (weatherDescription != 0) {
-            strncpy(weather.description, weatherDescription, CHAR_LEN);
+            //strncpy(weather.description, weatherDescription, CHAR_LEN);
           }
           if (weatherIcon != 0) {
             strncpy(weather.icon, weatherIcon, CHAR_LEN);
@@ -229,6 +242,56 @@ void get_weather_t(void * pvParameters ) {
         Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
       }
     }
+
+    if (now() - cv.updateTime > CV_UPDATE_INTERVAL) {
+      Serial.println("Getting CV");
+      httpClientCV.begin("https://www.worldometers.info/coronavirus/");
+      int httpCode = httpClientCV.GET();
+      if (httpCode > 0) {
+        if (httpCode == HTTP_CODE_OK) {
+          WiFiClient * stream = httpClientCV.getStreamPtr();
+          size_t size = stream->available();
+          Serial.printf("rec size is %lu\n", size);
+          char response[512];
+          stream->readBytes(response, sizeof(response));
+          //String responseStr = String(response);
+          //Serial.printf("xxxxxxGot in string format ..%s..\n",response);
+          //Serial.print("Return from CV..");
+          //char *ptr = strstr(response, CV_SEARCH1);
+          String remainStr = httpClientCV.getString();
+
+          String responseStr = String(response);
+          //Serial.println(responseStr);
+
+          //Serial.println(responseStr.substring(responseStr.indexOf(CV_SEARCH1)+sizeof(CV_SEARCH1)+1));
+          String caseStr = responseStr.substring(responseStr.indexOf(CV_SEARCH1) + sizeof(CV_SEARCH1) + 1);
+          String caseNbr = caseStr.substring(0, caseStr.indexOf(" "));
+          //caseNbr.concat(" cases");
+          caseNbr.toCharArray(CVMessage, 50);
+          strcat(CVMessage, " cases");
+          Serial.printf("Resp ..%s..", CVMessage);
+          Serial.println("..");
+          strncpy(weather.description, CVMessage, CHAR_LEN);
+          weatherUpdated=true;
+          strncpy(statusMessage, "Corona cases updated", CHAR_LEN);
+          statusMessageUpdated = true;
+          cv.updateTime = now();
+        }
+        else {
+          Serial.printf("[HTTP] GET...CV1 failed, error: %s , %i\n", httpClientCV.errorToString(httpCode).c_str(), httpCode);
+          String payload = httpClientCV.getString();
+          Serial.print("Error Return from CV");
+          Serial.print(payload);
+
+          cv.updateTime = now();
+        }
+      } else
+      {
+        Serial.printf("[HTTP] GET...CV2 failed, error: %s\n", httpClientCV.errorToString(httpCode).c_str());
+      }
+      //httpClientCV.end();
+    }
+
 
     if (now() - forecastDaysUpdateTime > FORECAST_DAYS_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/forecast/daily?city=" + String(LOCATION) + +"&days=" + String(FORECAST_DAYS) + "&key=" + String(apiKey));
@@ -363,7 +426,7 @@ void time_init() {
 }
 
 void mqtt_connect() {
-  
+
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASSWORD);
   Serial.println();
   Serial.print("Attempting to connect to the MQTT broker : ");
@@ -761,7 +824,7 @@ void receive_mqtt_messages_t(void * pvParams) {
           if (readings[i].dataType == DATA_HUMIDITY) {
             update_humidity(recMessage, index);
           }
-          
+
         }
       }
       for (int i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
