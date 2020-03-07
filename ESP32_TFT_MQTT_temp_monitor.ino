@@ -175,8 +175,6 @@ MqttClient mqttClient(wifiClient);
 
 HTTPClient httpClientWeather;
 HTTPClient httpClientCV;
-WiFiClientSecure *client = new WiFiClientSecure;
-
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
@@ -227,7 +225,7 @@ void get_weather_t(void * pvParameters ) {
           weather.temperature = weatherTemperature;
           weather.pressure = weatherPressure;
           if (weatherDescription != 0) {
-            //strncpy(weather.description, weatherDescription, CHAR_LEN);
+            //strncpy(weather.description, weatherDescription, CHAR_LEN);  //Removed to allow CV numbers instead
           }
           if (weatherIcon != 0) {
             strncpy(weather.icon, weatherIcon, CHAR_LEN);
@@ -251,26 +249,14 @@ void get_weather_t(void * pvParameters ) {
         if (httpCode == HTTP_CODE_OK) {
           WiFiClient * stream = httpClientCV.getStreamPtr();
           size_t size = stream->available();
-          Serial.printf("rec size is %lu\n", size);
           char response[512];
-          stream->readBytes(response, sizeof(response));
-          //String responseStr = String(response);
-          //Serial.printf("xxxxxxGot in string format ..%s..\n",response);
-          //Serial.print("Return from CV..");
-          //char *ptr = strstr(response, CV_SEARCH1);
-          String remainStr = httpClientCV.getString();
-
-          String responseStr = String(response);
-          //Serial.println(responseStr);
-
-          //Serial.println(responseStr.substring(responseStr.indexOf(CV_SEARCH1)+sizeof(CV_SEARCH1)+1));
+          stream->readBytes(response, sizeof(response)); 
+          String remainStr = httpClientCV.getString();  // Clear buffer
+          String responseStr = String(response);       // Convert to strng for searching
           String caseStr = responseStr.substring(responseStr.indexOf(CV_SEARCH1) + sizeof(CV_SEARCH1) + 1);
           String caseNbr = caseStr.substring(0, caseStr.indexOf(" "));
-          //caseNbr.concat(" cases");
           caseNbr.toCharArray(CVMessage, 50);
           strcat(CVMessage, " cases");
-          Serial.printf("Resp ..%s..", CVMessage);
-          Serial.println("..");
           strncpy(weather.description, CVMessage, CHAR_LEN);
           weatherUpdated=true;
           strncpy(statusMessage, "Corona cases updated", CHAR_LEN);
@@ -289,7 +275,6 @@ void get_weather_t(void * pvParameters ) {
       {
         Serial.printf("[HTTP] GET...CV2 failed, error: %s\n", httpClientCV.errorToString(httpCode).c_str());
       }
-      //httpClientCV.end();
     }
 
 
