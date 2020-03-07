@@ -146,6 +146,11 @@ struct ForecastHours {
 #define PRESS_DEBOUNCE 1
 #define TOUCH_CALIBRATION { 330, 3303, 450, 3116, 1 }
 #define CV_SEARCH1 "Coronavirus Update (Live)"
+#define CV_SEARCH2 "and"
+
+char CVCases[CHAR_LEN];
+char CVDeaths[CHAR_LEN];
+
 
 // Screen types
 #define MAIN_SCREEN 0
@@ -176,6 +181,7 @@ MqttClient mqttClient(wifiClient);
 HTTPClient httpClientWeather;
 HTTPClient httpClientCV;
 
+
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 
@@ -204,7 +210,7 @@ void get_weather_t(void * pvParameters ) {
   //const char apiKey[] = OPEN_WEATHER_API_KEY;
   const char apiKey[] = WEATHERBIT_API_KEY;
   String requestUrl;
-  char CVMessage[1024];
+
 
   while (true) {
 
@@ -225,7 +231,7 @@ void get_weather_t(void * pvParameters ) {
           weather.temperature = weatherTemperature;
           weather.pressure = weatherPressure;
           if (weatherDescription != 0) {
-            //strncpy(weather.description, weatherDescription, CHAR_LEN);  //Removed to allow CV numbers instead
+            strncpy(weather.description, weatherDescription, CHAR_LEN);
           }
           if (weatherIcon != 0) {
             strncpy(weather.icon, weatherIcon, CHAR_LEN);
@@ -249,16 +255,22 @@ void get_weather_t(void * pvParameters ) {
         if (httpCode == HTTP_CODE_OK) {
           WiFiClient * stream = httpClientCV.getStreamPtr();
           size_t size = stream->available();
+          Serial.printf("rec size is %lu\n", size);
           char response[512];
-          stream->readBytes(response, sizeof(response)); 
-          String remainStr = httpClientCV.getString();  // Clear buffer
-          String responseStr = String(response);       // Convert to strng for searching
+          stream->readBytes(response, sizeof(response));
+          String remainStr = httpClientCV.getString();
+
+          String responseStr = String(response);
           String caseStr = responseStr.substring(responseStr.indexOf(CV_SEARCH1) + sizeof(CV_SEARCH1) + 1);
+          String deathStr = caseStr.substring(caseStr.indexOf(CV_SEARCH2) + sizeof(CV_SEARCH2));
           String caseNbr = caseStr.substring(0, caseStr.indexOf(" "));
-          caseNbr.toCharArray(CVMessage, 50);
-          strcat(CVMessage, " cases");
-          strncpy(weather.description, CVMessage, CHAR_LEN);
-          weatherUpdated=true;
+          String deathNbr = deathStr.substring(0, deathStr.indexOf(" "));
+          caseNbr.toCharArray(CVCases, 50);
+          strcat(CVCases, " cases");
+          deathNbr.toCharArray(CVDeaths, 50);
+          strcat(CVDeaths, " deaths");
+
+          weatherUpdated = true;
           strncpy(statusMessage, "Corona cases updated", CHAR_LEN);
           statusMessageUpdated = true;
           cv.updateTime = now();
@@ -499,6 +511,7 @@ void tft_output_t(void * pvParameters ) {
   int WEATHER_RIGHT  = 320;
   int WEATHER_TOP = 160;
   int WEATHER_BOTTOM = 215;
+  int CV_LINE = 110;
 
   int HOURS_FORECAST_LEFT = 0;
   int HOURS_FORECAST_RIGHT = 320;
@@ -538,12 +551,14 @@ void tft_output_t(void * pvParameters ) {
 
   tft.fillRect(TITLE_LEFT, TITLE_TOP, TITLE_RIGHT - TITLE_LEFT, TITLE_BOTTOM - TITLE_TOP, TFT_GREEN);
   tft.setTextColor(TFT_BLACK, TFT_GREEN);
-  tft_draw_string_centre(" The Klauss-o-meter V2.1", TITLE_LEFT, TITLE_RIGHT, TITLE_TOP, 2);
+  tft_draw_string_centre(" The Klauss-o-meter V2.2", TITLE_LEFT, TITLE_RIGHT, TITLE_TOP, 2);
 
   // Set up the weather message box
   tft.drawLine(WEATHER_LEFT, WEATHER_TOP, WEATHER_RIGHT, WEATHER_TOP, TFT_RED);
+  tft.drawLine(CV_LINE, WEATHER_TOP, CV_LINE, WEATHER_BOTTOM, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft_draw_string_centre(LOCATION, WEATHER_LEFT, WEATHER_RIGHT, WEATHER_TOP - 7 , 2);
+  tft_draw_string_centre(LOCATION, WEATHER_LEFT, CV_LINE, WEATHER_TOP - 7 , 2);
+  tft_draw_string_centre("Corona Virus", CV_LINE, WEATHER_RIGHT, WEATHER_TOP - 7 , 2);
 
   while (true) {
     delay(100);
@@ -607,12 +622,22 @@ void tft_output_t(void * pvParameters ) {
       if (weatherUpdated) {
         weatherUpdated = false;
         tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 8, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_BOTTOM - WEATHER_TOP - 15, TFT_BLACK);
+        tft.drawLine(CV_LINE, WEATHER_TOP, CV_LINE, WEATHER_BOTTOM, TFT_RED);  // As blanked above
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         String weatherTemp = String(weather.temperature, 1);
-        tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
-        weather.description[0] = toupper(weather.description[0]);
-        tft.drawString(weather.description, WEATHER_LEFT + 105, WEATHER_TOP + 25 , 4);
+        char weatherTempChar[CHAR_LEN];
+        weatherTemp.toCharArray(weatherTempChar,CHAR_LEN);
+        //tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
+        tft_draw_string_centre(weatherTempChar, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 15, 6);
+        //weather.description[0] = toupper(weather.description[0]);
+        //tft.drawString(weather.description, WEATHER_LEFT + 105, WEATHER_TOP + 25 , 4);
+        //tft.drawString(CVCases, CV_LINE + 10, WEATHER_TOP + 10 , 4);
+        //tft.drawString(CVDeaths, CV_LINE + 10, WEATHER_TOP + 35 , 4);
+        tft_draw_string_centre(CVCases, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 11 , 4);
+        tft_draw_string_centre(CVDeaths, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 35 , 4);
+
       }
+
       yield();
 
       /*if (forecastHoursUpdated && forecastHoursUpdateTime != 0) {
