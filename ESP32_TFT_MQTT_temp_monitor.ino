@@ -193,6 +193,9 @@ size_t old_biggest_free_block = 0;
 
 void setup() {
 
+  disableCore0WDT();
+  disableCore1WDT();
+
   Serial.begin(115200);  // Default speed of esp32
   SPIFFS.begin();
   pinMode(LED_PIN, OUTPUT);
@@ -251,6 +254,7 @@ void get_weather_t(void * pvParameters ) {
       Serial.println("Getting CV");
       httpClientCV.begin("https://www.worldometers.info/coronavirus/");
       int httpCode = httpClientCV.GET();
+      yield();
       if (httpCode > 0) {
         if (httpCode == HTTP_CODE_OK) {
           WiFiClient * stream = httpClientCV.getStreamPtr();
@@ -258,9 +262,10 @@ void get_weather_t(void * pvParameters ) {
           Serial.printf("rec size is %lu\n", size);
           char response[512];
           stream->readBytes(response, sizeof(response));
-          String remainStr = httpClientCV.getString();
 
+          String remainStr = httpClientCV.getString();
           String responseStr = String(response);
+          Serial.println(responseStr);
           String caseStr = responseStr.substring(responseStr.indexOf(CV_SEARCH1) + sizeof(CV_SEARCH1) + 1);
           String deathStr = caseStr.substring(caseStr.indexOf(CV_SEARCH2) + sizeof(CV_SEARCH2));
           String caseNbr = caseStr.substring(0, caseStr.indexOf(" "));
@@ -269,11 +274,12 @@ void get_weather_t(void * pvParameters ) {
           strcat(CVCases, " cases");
           deathNbr.toCharArray(CVDeaths, 50);
           strcat(CVDeaths, " deaths");
-
           weatherUpdated = true;
           strncpy(statusMessage, "Corona cases updated", CHAR_LEN);
           statusMessageUpdated = true;
           cv.updateTime = now();
+
+
         }
         else {
           Serial.printf("[HTTP] GET...CV1 failed, error: %s , %i\n", httpClientCV.errorToString(httpCode).c_str(), httpCode);
@@ -286,6 +292,9 @@ void get_weather_t(void * pvParameters ) {
       } else
       {
         Serial.printf("[HTTP] GET...CV2 failed, error: %s\n", httpClientCV.errorToString(httpCode).c_str());
+      }
+      if (httpClientCV.connected()) {
+        httpClientCV.end();
       }
     }
 
@@ -328,6 +337,9 @@ void get_weather_t(void * pvParameters ) {
       {
         Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
       }
+      if (httpClientWeather.connected()) {
+        httpClientWeather.end();
+      }
     }
 
     if ((now() - forecastHoursUpdateTime > FORECAST_HOURS_UPDATE_INTERVAL) && false) {  // added false to stop updates as broken
@@ -363,8 +375,10 @@ void get_weather_t(void * pvParameters ) {
       {
         Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
       }
+      if (httpClientWeather.connected()) {
+        httpClientWeather.end();
+      }
     }
-    httpClientWeather.end();
     delay(2000);
   }
 }
@@ -626,7 +640,7 @@ void tft_output_t(void * pvParameters ) {
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         String weatherTemp = String(weather.temperature, 1);
         char weatherTempChar[CHAR_LEN];
-        weatherTemp.toCharArray(weatherTempChar,CHAR_LEN);
+        weatherTemp.toCharArray(weatherTempChar, CHAR_LEN);
         //tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
         tft_draw_string_centre(weatherTempChar, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 15, 6);
         //weather.description[0] = toupper(weather.description[0]);
