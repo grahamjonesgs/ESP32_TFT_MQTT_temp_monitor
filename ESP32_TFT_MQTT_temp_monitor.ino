@@ -271,11 +271,11 @@ void get_weather_t(void * pvParameters ) {
           String caseNbr = caseStr.substring(0, caseStr.indexOf(" "));
           String deathNbr = deathStr.substring(0, deathStr.indexOf(" "));
           caseNbr.toCharArray(CVCases, 50);
-          strcat(CVCases, " cases");
+          //strcat(CVCases, " cases");
           deathNbr.toCharArray(CVDeaths, 50);
-          strcat(CVDeaths, " deaths");
+          //strcat(CVDeaths, " deaths");
           weatherUpdated = true;
-          strncpy(statusMessage, "Corona cases updated", CHAR_LEN);
+          strncpy(statusMessage, "Corona stats updated", CHAR_LEN);
           statusMessageUpdated = true;
           cv.updateTime = now();
 
@@ -519,11 +519,11 @@ void tft_output_t(void * pvParameters ) {
   int TEMP_LEFT = 0;
   int TEMP_RIGHT = 320;
   int TEMP_TOP = 15;
-  int TEMP_BOTTOM = 155;
+  int TEMP_BOTTOM = 120;
 
   int WEATHER_LEFT = 0;
   int WEATHER_RIGHT  = 320;
-  int WEATHER_TOP = 160;
+  int WEATHER_TOP = 125;
   int WEATHER_BOTTOM = 215;
   int CV_LINE = 110;
 
@@ -626,7 +626,7 @@ void tft_output_t(void * pvParameters ) {
         tft.fillRect(tempZone[i].x, tempZone[i].y, tempZone[i].xSize, tempZone[i].ySize, TFT_BLACK);
         tft.drawString(readings[i].description, tempZone[i].x, tempZone[i].y + 5, 2);
         tft.drawString(readings[i].output, tempZone[i].x, tempZone[i].y + 33, 6);
-        tft.drawString(readings[i + 4].output, tempZone[i].x, tempZone[i].y + 90, 4); // Output the humidity
+        tft.drawString(readings[i + 4].output, tempZone[i].x, tempZone[i].y + 80, 4); // Output the humidity
         draw_temperature_icon(readings[i].changeChar, readings[i].output, tempZone[i].x + 55, tempZone[i].y + 38);
       }
     }
@@ -635,20 +635,22 @@ void tft_output_t(void * pvParameters ) {
     if (displayType == MAIN_SCREEN) {
       if (weatherUpdated) {
         weatherUpdated = false;
-        tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 8, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_BOTTOM - WEATHER_TOP - 15, TFT_BLACK);
+        tft.fillRect(WEATHER_LEFT, WEATHER_TOP + 8, WEATHER_RIGHT - WEATHER_LEFT, WEATHER_BOTTOM - WEATHER_TOP - 8, TFT_BLACK);
         tft.drawLine(CV_LINE, WEATHER_TOP, CV_LINE, WEATHER_BOTTOM, TFT_RED);  // As blanked above
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         String weatherTemp = String(weather.temperature, 1);
         char weatherTempChar[CHAR_LEN];
         weatherTemp.toCharArray(weatherTempChar, CHAR_LEN);
         //tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
-        tft_draw_string_centre(weatherTempChar, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 15, 6);
+        tft_draw_string_centre(weatherTempChar, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 25, 6);
         //weather.description[0] = toupper(weather.description[0]);
         //tft.drawString(weather.description, WEATHER_LEFT + 105, WEATHER_TOP + 25 , 4);
         //tft.drawString(CVCases, CV_LINE + 10, WEATHER_TOP + 10 , 4);
         //tft.drawString(CVDeaths, CV_LINE + 10, WEATHER_TOP + 35 , 4);
-        tft_draw_string_centre(CVCases, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 11 , 4);
-        tft_draw_string_centre(CVDeaths, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 35 , 4);
+        tft_draw_string_centre("Cases", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 9 , 2);
+        tft_draw_string_centre(CVCases, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 27 , 4);
+        tft_draw_string_centre("Deaths", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP +51  , 2);
+        tft_draw_string_centre(CVDeaths, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 69 , 4);
 
       }
 
