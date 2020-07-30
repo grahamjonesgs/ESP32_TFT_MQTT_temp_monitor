@@ -81,6 +81,8 @@ struct Weather {
   float temperature;
   int pressure;
   float humidity;
+  float windSpeed;
+  char windDir[CHAR_LEN];
   char overal[CHAR_LEN];
   char description[CHAR_LEN];
   char icon[CHAR_LEN];
@@ -160,7 +162,7 @@ int displayType = MAIN_SCREEN;
 // Global Variables
 Readings readings[] { READINGS_ARRAY };
 Settings settings[] {SETTINGS_ARRAY };
-Weather weather = {0.0, 0, 0.0, "", "", "", 0, 0};
+Weather weather = {0.0, 0, 0.0, 0.0, "", "", "", "", 0, 0};
 Cv cv = {0, 0, 0};
 ForecastDays forecastDays[FORECAST_DAYS];
 ForecastHours forecastHours[FORECAST_HOURS];
@@ -216,7 +218,7 @@ void get_weather_t(void * pvParameters ) {
 
 
   while (true) {
-
+    String callstring;
     if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
       int httpCode = httpClientWeather.GET();
@@ -227,17 +229,25 @@ void get_weather_t(void * pvParameters ) {
           DynamicJsonDocument root(5000);
           deserializeJson(root, payload);
           float weatherTemperature = root["data"][0]["temp"];
+          float weatherWindSpeed = root["data"][0]["wind_spd"];
+          const char* weatherWindDir = root["data"][0]["wind_cdir"];
           int weatherPressure = root["data"][0]["pres"];
           const char* weatherDescription = root["data"][0]["weather"]["description"];
           const char* weatherIcon = root["data"][0]["weather"]["icon"];
 
+      
+
           weather.temperature = weatherTemperature;
           weather.pressure = weatherPressure;
+          weather.windSpeed = weatherWindSpeed * 3.6;
           if (weatherDescription != 0) {
             strncpy(weather.description, weatherDescription, CHAR_LEN);
           }
           if (weatherIcon != 0) {
             strncpy(weather.icon, weatherIcon, CHAR_LEN);
+          }
+          if (weatherWindDir != 0) {
+            strncpy(weather.windDir, weatherWindDir, CHAR_LEN);
           }
           weather.updateTime = now();
           weatherUpdated = true;
@@ -572,7 +582,7 @@ void tft_output_t(void * pvParameters ) {
   tft.drawLine(CV_LINE, WEATHER_TOP, CV_LINE, WEATHER_BOTTOM, TFT_RED);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft_draw_string_centre(LOCATION, WEATHER_LEFT, CV_LINE, WEATHER_TOP - 7 , 2);
-  tft_draw_string_centre("Corona Virus", CV_LINE, WEATHER_RIGHT, WEATHER_TOP - 7 , 2);
+  tft_draw_string_centre("Badminton Outlook", CV_LINE, WEATHER_RIGHT, WEATHER_TOP - 7 , 2);
 
   while (true) {
     delay(100);
@@ -639,18 +649,24 @@ void tft_output_t(void * pvParameters ) {
         tft.drawLine(CV_LINE, WEATHER_TOP, CV_LINE, WEATHER_BOTTOM, TFT_RED);  // As blanked above
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         String weatherTemp = String(weather.temperature, 1);
+        String weatherWindSpeed = String(weather.windSpeed, 1);
+        weatherWindSpeed = weatherWindSpeed + " km/h";
         char weatherTempChar[CHAR_LEN];
+        char weatherWindSpeedChar[CHAR_LEN];
         weatherTemp.toCharArray(weatherTempChar, CHAR_LEN);
+        weatherWindSpeed.toCharArray(weatherWindSpeedChar, CHAR_LEN);
         //tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
         tft_draw_string_centre(weatherTempChar, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 25, 6);
         //weather.description[0] = toupper(weather.description[0]);
         //tft.drawString(weather.description, WEATHER_LEFT + 105, WEATHER_TOP + 25 , 4);
-        //tft.drawString(CVCases, CV_LINE + 10, WEATHER_TOP + 10 , 4);
-        //tft.drawString(CVDeaths, CV_LINE + 10, WEATHER_TOP + 35 , 4);
-        tft_draw_string_centre("Cases", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 9 , 2);
-        tft_draw_string_centre(CVCases, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 27 , 4);
-        tft_draw_string_centre("Deaths", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP +51  , 2);
-        tft_draw_string_centre(CVDeaths, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 69 , 4);
+        //tft_draw_string_centre("Cases", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 9 , 2);
+        //tft_draw_string_centre(CVCases, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 27 , 4);
+        //tft_draw_string_centre("Deaths", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP +51  , 2);
+        //tft_draw_string_centre(CVDeaths, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 69 , 4);
+        tft_draw_string_centre("Wind Speed", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 9 , 2);
+        tft_draw_string_centre(weatherWindSpeedChar, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 27 , 4);
+        tft_draw_string_centre("Direction", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP +51  , 2);
+        tft_draw_string_centre(weather.windDir, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 69 , 4);
 
       }
 
