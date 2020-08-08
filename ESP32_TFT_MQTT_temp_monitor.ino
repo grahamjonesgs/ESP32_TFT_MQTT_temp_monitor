@@ -212,14 +212,51 @@ void setup() {
 
 void get_weather_t(void * pvParameters ) {
 
-  //const char apiKey[] = OPEN_WEATHER_API_KEY;
-  const char apiKey[] = WEATHERBIT_API_KEY;
+  const char apiKey[] = CLIMACELL_API_KEY;
   String requestUrl;
 
 
   while (true) {
     String callstring;
-    if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
+      if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
+      httpClientWeather.begin("https://api.climacell.co/v3/weather/realtime?lat=48.134113&lon=11.580164&unit_system=si&fields=wind_direction%2Cwind_speed%2Ctemp&apikey=" + String(apiKey));
+      int httpCode = httpClientWeather.GET();
+      if (httpCode > 0) {
+        if (httpCode == HTTP_CODE_OK) {
+          String payload = httpClientWeather.getString();
+          DynamicJsonDocument root(5000);
+          deserializeJson(root, payload);
+          float weatherTemperature = root["temp"]["value"];
+          float weatherWindSpeed = root["wind_speed"]["value"];
+          float weatherWindDir = root["wind_direction"]["value"];        
+
+          weather.temperature = weatherTemperature;
+          weather.windSpeed = weatherWindSpeed * 3.6;
+
+
+          if (weatherWindDir<=22.5 || weatherWindDir>=337.5) strncpy(weather.windDir,"N",CHAR_LEN);
+          if (weatherWindDir>=22.5 && weatherWindDir<=67.5) strncpy(weather.windDir,"NE",CHAR_LEN);
+          if (weatherWindDir>=67.5 && weatherWindDir<=112.5) strncpy(weather.windDir,"E",CHAR_LEN);
+          if (weatherWindDir>=112.5 && weatherWindDir<=112.5) strncpy(weather.windDir,"SE",CHAR_LEN);
+          if (weatherWindDir>=157.5 && weatherWindDir<=202.5) strncpy(weather.windDir,"S",CHAR_LEN);
+          if (weatherWindDir>=202.5 && weatherWindDir<=247.5) strncpy(weather.windDir,"SW",CHAR_LEN);
+          if (weatherWindDir>=247.5 && weatherWindDir<=292.5) strncpy(weather.windDir,"W",CHAR_LEN);
+          if (weatherWindDir>=292.5 && weatherWindDir<=337.5) strncpy(weather.windDir,"NW",CHAR_LEN);  
+      
+          Serial.printf("xxxxxxxxxx Weather update OK temp %0.2f, speed %0.2f, dir %s\n",weather.temperature,weather.windSpeed,weather.windDir);
+          weather.updateTime = now();
+          weatherUpdated = true;
+          strncpy(statusMessage, "Weather updated", CHAR_LEN);
+          statusMessageUpdated = true;
+        }
+      } else
+      {
+        Serial.printf("xxxxxxxxxxx [HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
+      }
+    }
+
+    
+   /* if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
       int httpCode = httpClientWeather.GET();
       if (httpCode > 0) {
@@ -258,7 +295,7 @@ void get_weather_t(void * pvParameters ) {
       {
         Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
       }
-    }
+    }*/
 
     if (now() - cv.updateTime > CV_UPDATE_INTERVAL) {
       Serial.println("Getting CV");
