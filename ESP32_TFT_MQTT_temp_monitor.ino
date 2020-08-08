@@ -218,7 +218,7 @@ void get_weather_t(void * pvParameters ) {
 
   while (true) {
     String callstring;
-      if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
+    if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
       httpClientWeather.begin("https://api.climacell.co/v3/weather/realtime?lat=48.134113&lon=11.580164&unit_system=si&fields=wind_direction%2Cwind_speed%2Ctemp&apikey=" + String(apiKey));
       int httpCode = httpClientWeather.GET();
       if (httpCode > 0) {
@@ -226,28 +226,38 @@ void get_weather_t(void * pvParameters ) {
           String payload = httpClientWeather.getString();
           DynamicJsonDocument root(5000);
           deserializeJson(root, payload);
+          String weatherUnits = root["temp"]["units"];
           float weatherTemperature = root["temp"]["value"];
           float weatherWindSpeed = root["wind_speed"]["value"];
-          float weatherWindDir = root["wind_direction"]["value"];        
-
-          weather.temperature = weatherTemperature;
-          weather.windSpeed = weatherWindSpeed * 3.6;
+          float weatherWindDir = root["wind_direction"]["value"];
 
 
-          if (weatherWindDir<=22.5 || weatherWindDir>=337.5) strncpy(weather.windDir,"N",CHAR_LEN);
-          if (weatherWindDir>=22.5 && weatherWindDir<=67.5) strncpy(weather.windDir,"NE",CHAR_LEN);
-          if (weatherWindDir>=67.5 && weatherWindDir<=112.5) strncpy(weather.windDir,"E",CHAR_LEN);
-          if (weatherWindDir>=112.5 && weatherWindDir<=112.5) strncpy(weather.windDir,"SE",CHAR_LEN);
-          if (weatherWindDir>=157.5 && weatherWindDir<=202.5) strncpy(weather.windDir,"S",CHAR_LEN);
-          if (weatherWindDir>=202.5 && weatherWindDir<=247.5) strncpy(weather.windDir,"SW",CHAR_LEN);
-          if (weatherWindDir>=247.5 && weatherWindDir<=292.5) strncpy(weather.windDir,"W",CHAR_LEN);
-          if (weatherWindDir>=292.5 && weatherWindDir<=337.5) strncpy(weather.windDir,"NW",CHAR_LEN);  
-      
-          Serial.printf("xxxxxxxxxx Weather update OK temp %0.2f, speed %0.2f, dir %s\n",weather.temperature,weather.windSpeed,weather.windDir);
-          weather.updateTime = now();
-          weatherUpdated = true;
-          strncpy(statusMessage, "Weather updated", CHAR_LEN);
-          statusMessageUpdated = true;
+          if (weatherUnits == "C") {  // Check for valid result
+            weather.temperature = weatherTemperature;
+            weather.windSpeed = weatherWindSpeed * 3.6;
+
+            if (weatherWindDir <= 22.5 || weatherWindDir >= 337.5) strncpy(weather.windDir, "N", CHAR_LEN);
+            if (weatherWindDir >= 22.5 && weatherWindDir <= 67.5) strncpy(weather.windDir, "NE", CHAR_LEN);
+            if (weatherWindDir >= 67.5 && weatherWindDir <= 112.5) strncpy(weather.windDir, "E", CHAR_LEN);
+            if (weatherWindDir >= 112.5 && weatherWindDir <= 112.5) strncpy(weather.windDir, "SE", CHAR_LEN);
+            if (weatherWindDir >= 157.5 && weatherWindDir <= 202.5) strncpy(weather.windDir, "S", CHAR_LEN);
+            if (weatherWindDir >= 202.5 && weatherWindDir <= 247.5) strncpy(weather.windDir, "SW", CHAR_LEN);
+            if (weatherWindDir >= 247.5 && weatherWindDir <= 292.5) strncpy(weather.windDir, "W", CHAR_LEN);
+            if (weatherWindDir >= 292.5 && weatherWindDir <= 337.5) strncpy(weather.windDir, "NW", CHAR_LEN);
+
+            Serial.printf("Weather update OK temp %0.2f, speed %0.2f, dir %s\n", weather.temperature, weather.windSpeed, weather.windDir);
+            weather.updateTime = now();
+            weatherUpdated = true;
+            strncpy(statusMessage, "Weather updated", CHAR_LEN);
+            statusMessageUpdated = true;
+          }
+          else {
+            Serial.printf("Weather error\n");
+            weather.updateTime = now(); // stop too many requests
+            strncpy(statusMessage, "Weather error", CHAR_LEN);
+            statusMessageUpdated = true;
+          }
+
         }
       } else
       {
@@ -255,47 +265,47 @@ void get_weather_t(void * pvParameters ) {
       }
     }
 
-    
-   /* if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
-      httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
-      int httpCode = httpClientWeather.GET();
-      if (httpCode > 0) {
-        if (httpCode == HTTP_CODE_OK) {
-          String payload = httpClientWeather.getString();
 
-          DynamicJsonDocument root(5000);
-          deserializeJson(root, payload);
-          float weatherTemperature = root["data"][0]["temp"];
-          float weatherWindSpeed = root["data"][0]["wind_spd"];
-          const char* weatherWindDir = root["data"][0]["wind_cdir"];
-          int weatherPressure = root["data"][0]["pres"];
-          const char* weatherDescription = root["data"][0]["weather"]["description"];
-          const char* weatherIcon = root["data"][0]["weather"]["icon"];
+    /* if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
+       httpClientWeather.begin("http://" + String(WEATHER_SERVER) + "/v2.0/current?city=" + String(LOCATION) + "&key=" + String(apiKey));
+       int httpCode = httpClientWeather.GET();
+       if (httpCode > 0) {
+         if (httpCode == HTTP_CODE_OK) {
+           String payload = httpClientWeather.getString();
 
-      
+           DynamicJsonDocument root(5000);
+           deserializeJson(root, payload);
+           float weatherTemperature = root["data"][0]["temp"];
+           float weatherWindSpeed = root["data"][0]["wind_spd"];
+           const char* weatherWindDir = root["data"][0]["wind_cdir"];
+           int weatherPressure = root["data"][0]["pres"];
+           const char* weatherDescription = root["data"][0]["weather"]["description"];
+           const char* weatherIcon = root["data"][0]["weather"]["icon"];
 
-          weather.temperature = weatherTemperature;
-          weather.pressure = weatherPressure;
-          weather.windSpeed = weatherWindSpeed * 3.6;
-          if (weatherDescription != 0) {
-            strncpy(weather.description, weatherDescription, CHAR_LEN);
-          }
-          if (weatherIcon != 0) {
-            strncpy(weather.icon, weatherIcon, CHAR_LEN);
-          }
-          if (weatherWindDir != 0) {
-            strncpy(weather.windDir, weatherWindDir, CHAR_LEN);
-          }
-          weather.updateTime = now();
-          weatherUpdated = true;
-          strncpy(statusMessage, "Weather updated", CHAR_LEN);
-          statusMessageUpdated = true;
-        }
-      } else
-      {
-        Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
-      }
-    }*/
+
+
+           weather.temperature = weatherTemperature;
+           weather.pressure = weatherPressure;
+           weather.windSpeed = weatherWindSpeed * 3.6;
+           if (weatherDescription != 0) {
+             strncpy(weather.description, weatherDescription, CHAR_LEN);
+           }
+           if (weatherIcon != 0) {
+             strncpy(weather.icon, weatherIcon, CHAR_LEN);
+           }
+           if (weatherWindDir != 0) {
+             strncpy(weather.windDir, weatherWindDir, CHAR_LEN);
+           }
+           weather.updateTime = now();
+           weatherUpdated = true;
+           strncpy(statusMessage, "Weather updated", CHAR_LEN);
+           statusMessageUpdated = true;
+         }
+       } else
+       {
+         Serial.printf("[HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
+       }
+      }*/
 
     if (now() - cv.updateTime > CV_UPDATE_INTERVAL) {
       Serial.println("Getting CV");
@@ -702,7 +712,7 @@ void tft_output_t(void * pvParameters ) {
         //tft_draw_string_centre(CVDeaths, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 69 , 4);
         tft_draw_string_centre("Wind Speed", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 9 , 2);
         tft_draw_string_centre(weatherWindSpeedChar, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 27 , 4);
-        tft_draw_string_centre("Direction", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP +51  , 2);
+        tft_draw_string_centre("Direction", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 51  , 2);
         tft_draw_string_centre(weather.windDir, CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 69 , 4);
 
       }
