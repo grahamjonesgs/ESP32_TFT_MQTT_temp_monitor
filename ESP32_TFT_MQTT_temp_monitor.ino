@@ -111,6 +111,8 @@ struct ForecastHours {
   char icon[CHAR_LEN];
 };
 
+char weather_time_string[CHAR_LEN] = "--:--:--"; // Time weather was updated
+
 // Array and TFT string settings
 #define NO_READING "--"            // Screen output before any mesurement is received
 #define DESC_ONOFF "ONO"
@@ -215,6 +217,8 @@ void get_weather_t(void * pvParameters ) {
   const char apiKey[] = CLIMACELL_API_KEY;
   String requestUrl;
 
+  time_t t;
+
 
   while (true) {
     String callstring;
@@ -249,11 +253,13 @@ void get_weather_t(void * pvParameters ) {
             weather.updateTime = now();
             weatherUpdated = true;
             strncpy(statusMessage, "Weather updated", CHAR_LEN);
+            t = now();
+            snprintf(weather_time_string, CHAR_LEN, "%i:%02i:%02i", ((hour(t) + 2) % 24), minute(t), second(t));
+            Serial.printf("xxxxxxxxxxxxx  Weather update time .%s.\n", weather_time_string);
             statusMessageUpdated = true;
           }
           else {
             Serial.printf("Weather error\n");
-            weather.updateTime = now(); // stop too many requests
             strncpy(statusMessage, "Weather error", CHAR_LEN);
             statusMessageUpdated = true;
           }
@@ -703,7 +709,11 @@ void tft_output_t(void * pvParameters ) {
         weatherTemp.toCharArray(weatherTempChar, CHAR_LEN);
         weatherWindSpeed.toCharArray(weatherWindSpeedChar, CHAR_LEN);
         //tft.drawString(weatherTemp, WEATHER_LEFT + 5 , WEATHER_TOP + 15, 6);
-        tft_draw_string_centre(weatherTempChar, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 25, 6);
+        
+        tft_draw_string_centre(weatherTempChar, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 15, 6);
+        tft_draw_string_centre("Updated", WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 55, 2);
+        tft_draw_string_centre(weather_time_string, WEATHER_LEFT + 5 , CV_LINE, WEATHER_TOP + 75, 2);
+
         //weather.description[0] = toupper(weather.description[0]);
         //tft.drawString(weather.description, WEATHER_LEFT + 105, WEATHER_TOP + 25 , 4);
         //tft_draw_string_centre("Cases", CV_LINE + 10, WEATHER_RIGHT, WEATHER_TOP + 9 , 2);
