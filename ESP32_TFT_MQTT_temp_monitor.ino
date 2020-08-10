@@ -183,6 +183,7 @@ WiFiClientSecure wifiClient;
 MqttClient mqttClient(wifiClient);
 
 HTTPClient httpClientWeather;
+HTTPClient httpClientWeather2;
 HTTPClient httpClientCV;
 
 
@@ -223,11 +224,12 @@ void get_weather_t(void * pvParameters ) {
   while (true) {
     String callstring;
     if (now() - weather.updateTime > WEATHER_UPDATE_INTERVAL) {
-      httpClientWeather.begin("https://api.climacell.co/v3/weather/realtime?lat=48.134113&lon=11.580164&unit_system=si&fields=wind_direction%2Cwind_speed%2Ctemp&apikey=" + String(apiKey));
-      int httpCode = httpClientWeather.GET();
+      Serial.printf("xxxxxxx getting weather update from CC\n");
+      httpClientWeather2.begin("https://api.climacell.co/v3/weather/realtime?lat=48.134113&lon=11.580164&unit_system=si&fields=wind_direction%2Cwind_speed%2Ctemp&apikey=" + String(apiKey));
+      int httpCode = httpClientWeather2.GET();
       if (httpCode > 0) {
         if (httpCode == HTTP_CODE_OK) {
-          String payload = httpClientWeather.getString();
+          String payload = httpClientWeather2.getString();
           DynamicJsonDocument root(5000);
           deserializeJson(root, payload);
           String weatherUnits = root["temp"]["units"];
@@ -259,7 +261,7 @@ void get_weather_t(void * pvParameters ) {
             statusMessageUpdated = true;
           }
           else {
-            Serial.printf("Weather error\n");
+            Serial.printf("xxxxx  Weather error, did not get check character\n");
             strncpy(statusMessage, "Weather error", CHAR_LEN);
             statusMessageUpdated = true;
           }
@@ -267,7 +269,7 @@ void get_weather_t(void * pvParameters ) {
         }
       } else
       {
-        Serial.printf("xxxxxxxxxxx [HTTP] GET... failed, error: %s\n", httpClientWeather.errorToString(httpCode).c_str());
+        Serial.printf("xxxxxxxxxxx [HTTP] GET... failed, error: %s\n", httpClientWeather2.errorToString(httpCode).c_str());
       }
     }
 
